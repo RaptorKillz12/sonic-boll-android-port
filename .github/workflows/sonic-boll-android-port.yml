@@ -1,0 +1,50 @@
+name: Ultimate Sonic Boll Port Installer Compiler
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-inject:
+    name: Auto-Inject Layout & Code, Then Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Your Game Files & Assets
+        uses: actions/checkout@v4
+        with:
+          path: my-game-repo
+
+      - name: Clone Official Winlator Upstream Source
+        run: |
+          git clone --recursive https://github.com winlator-source
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Install Android NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      # ==============================================================
+      # AUTOMATED FILE INJECTION & CODE PATCHING VIA BASH
+      # ==============================================================
+
+      - name: Inject Game & Graphic Resource Assets
+        run: |
+          # 1. Inject game.zip into main application assets
+          mkdir -p winlator-source/app/src/main/assets/
+          cp my-game-repo/game.zip winlator-source/app/src/main/assets/game.zip
+          
+          # 2. Inject custom setup logo screen graphic
+          mkdir -p winlator-source/app/src/main/res/drawable-nodpi/
+          cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
+          
+          # 3. Replace Application Icon with Sonic Kiosk Logo to change home screen branding
+          cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher.png
