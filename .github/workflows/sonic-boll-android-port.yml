@@ -5,13 +5,18 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+# --- PASTE YOUR DROPBOX DIRECT LINK HERE ---
+env:
+  GAME_ZIP_URL: "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=14w6g4zw&dl=1" 
+# --------------------------------------------
+
 jobs:
   build-and-inject:
     name: Auto-Inject Layout & Code, Then Build APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Your Game Files & Assets
+      - name: Checkout Your Graphic Assets Only
         uses: actions/checkout@v4
         with:
           path: my-game-repo
@@ -33,18 +38,134 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
       # ==============================================================
-      # AUTOMATED FILE INJECTION & CODE PATCHING VIA BASH
+      # REMOTE BYPASS: FETCH LARGE ZIP FROM DROPBOX
       # ==============================================================
 
-      - name: Inject Game & Graphic Resource Assets
+      - name: Fetch Large Game Zip and Inject Graphic Resources
         run: |
-          # 1. Inject game.zip into main application assets
           mkdir -p winlator-source/app/src/main/assets/
-          cp my-game-repo/game.zip winlator-source/app/src/main/assets/game.zip
           
-          # 2. Inject custom setup logo screen graphic
+          # Using curl with -L to follow redirects which is mandatory for Dropbox links
+          echo "Downloading game archive from Dropbox cloud container..."
+          curl -L "${{ env.GAME_ZIP_URL }}" -o winlator-source/app/src/main/assets/game.zip
+          
+          # Safety check to see if the archive exists and is non-empty
+          if [ ! -s "winlator-source/app/src/main/assets/game.zip" ]; then
+            echo "Error: The download failed or returned an empty file. Make sure your Dropbox URL ends explicitly with dl=1"
+            exit 1
+          fi
+          
+          # Inject custom setup logo screen graphic into drawables
           mkdir -p winlator-source/app/src/main/res/drawable-nodpi/
-          cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
+          if [ -f "my-game-repo/sonic_kiosk_logo.png" ]; then
+            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
+            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+          fi
+
+      - name: Force App Name & Re-brand UI Labels
+        run: |
+          SED_TARGET="winlator-source/app/src/main/res/values/strings.xml"
+          sed -i 's/name="app_name">Winlator/name="app_name">Sonic Boll Port/g' $SED_TARGET
+
+      - name: Inject Blue Kiosk Layout Interface Overwrite
+        run: |
+          cat << 'EOF' > winlator-source/app/src/main/res/layout/content_installation_activity.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://android.com"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:gravity="center"
+              android:background="#121212"
+              android:padding="24dp">
+
+              <ImageView
+                  android:id="@+id/ImageViewLogo"
+                  android:layout_width="260dp"
+                  android:layout_height="260dp"
+                  android:src="@drawable/sonic_kiosk_logo"
+                  android:scaleType="fitCenter"
+                  android:layout_marginBottom="32dp"/>
+
+              <TextView
+                  android:id="@+id/TextViewTitle"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="Sonic Boll Mobile Port"
+                  android:textColor="#FFFFFF"
+                  android:textSize="22sp"
+                  android:textStyle="bold"
+                  android:layout_marginBottom="8dp"/>
+
+              <TextView
+                  android:id="@+id/TextViewStatus"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="Extracting installation engine layers..."
+                  android:textColor="#B3B3B3"
+                  android:textSize="14sp"
+                  android:layout_marginBottom="24dp"/>
+
+              <ProgressBar
+                  android:id="@+id/ProgressBar"
+                  style="?android:attr/progressBarStyleHorizontal"
+                  android:layout_width="260dp"
+                  android:layout_height="12dp"
+                  android:progress="0"
+                  android:max="100"
+                  android:progressBackgroundTint="#333333"
+                  android:progressTint="#0088FF"/>
+
+          </LinearLayout>
+          EOF
+
+      - name: Inject Core Unzip Automation Engine into Source Code
+        run: |
+          TARGET_MAIN_ACTIVITY="winlator-source/app/src/main/java/com/winlator/ContentInstallationActivity.java"
           
-          # 3. Replace Application Icon with Sonic Kiosk Logo to change home screen branding
-          cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          UNZIP_METHOD_PAYLOAD="    private void extractGameZipToWineCDrive(File imageDir) { \n\
+                  File targetCDrive = new File(imageDir, \"drive_c/Program Files/SonicBoll\"); \n\
+                  if (!targetCDrive.exists()) targetCDrive.mkdirs(); \n\
+                  try (java.io.InputStream assetStream = getAssets().open(\"game.zip\"); \n\
+                       java.util.zip.ZipInputStream zipStream = new java.util.zip.ZipInputStream(assetStream)) { \n\
+                      java.util.zip.ZipEntry entry; \n\
+                      byte[] buffer = new byte; \n\
+                      while ((entry = zipStream.getNextEntry()) != null) { \n\
+                          File outFile = new File(targetCDrive, entry.getName()); \n\
+                          if (entry.isDirectory()) { outFile.mkdirs(); } else { \n\
+                              File parent = outFile.getParentFile(); \n\
+                              if (parent != null \&\& !parent.exists()) parent.mkdirs(); \n\
+                              try (java.io.FileOutputStream outStream = new java.io.FileOutputStream(outFile)) { \n\
+                                  int len; while ((len = zipStream.read(buffer)) > 0) { outStream.write(buffer, 0, len); } \n\
+                              } \n\
+                          } \n\
+                          zipStream.closeEntry(); \n\
+                      } \n\
+                  } catch (Exception e) { e.printStackTrace(); } \n\
+              }"
+
+          sed -i -z "s/\(}\s*}\s*\)$/\n${UNZIP_METHOD_PAYLOAD}\n\1/" $TARGET_MAIN_ACTIVITY
+          sed -i 's/preinstallImageOptions();/extractGameZipToWineCDrive(imageDir); preinstallImageOptions();/g' $TARGET_MAIN_ACTIVITY
+
+      # ==============================================================
+      # COMPILATION PHASES
+      # ==============================================================
+
+      - name: Grant Execute Permission to Gradle
+        run: |
+          cd winlator-source/app
+          chmod +x gradlew
+
+      - name: Compile Custom Architecture Project
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          cd winlator-source/app
+          ./gradlew assembleDebug
+
+      - name: Output Compiled Production Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonic-Boll-Android-Port-APK
+          path: winlator-source/app/app/build/outputs/apk/debug/*.apk
