@@ -26,7 +26,7 @@ jobs:
           git clone --recursive https://github.com/brunodev85/winlator.git winlator-source
 
       - name: Set up Java Environment
-        uses: actions/setup-java@v6 # <-- FIXED: Upgraded to resolve deprecation warning
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -73,7 +73,6 @@ jobs:
 
       - name: Force App Name & Re-brand UI Labels
         run: |
-          # Use vertical bars as delimiters to completely eliminate path parsing errors
           find winlator-source/ -name "strings.xml" -exec sed -i 's|name="app_name">Winlator|name="app_name">Sonic Boll Port|g' {} +
 
       - name: Inject Blue Kiosk Layout Interface Overwrite
@@ -128,36 +127,58 @@ jobs:
           </LinearLayout>
           EOF
 
-      - name: Inject Core Unzip Automation Engine into Source Code
+      - name: Create Dedicated Game Unzipper Class
         run: |
-          # Use fallback checking to target MainActivity directly
-          FOUND_PATH=$(find winlator-source/ -name "MainActivity.java" | head -n 1)
-          echo "Injecting code block directly into detected file: $FOUND_PATH"
+          # Dynamically locate the package path to create GameExtractor.java right next to MainActivity
+          MAIN_DIR=$(dirname $(find winlator-source/ -name "MainActivity.java" | head -n 1))
           
-          # Escaped text payload containing standard Java zip stream mechanics
-          UNZIP_METHOD_PAYLOAD="    private void extractGameZipToWineCDrive(File imageDir) { \n\
-                  File targetCDrive = new File(imageDir, \"drive_c/Program Files/SonicBoll\"); \n\
-                  if (!targetCDrive.exists()) targetCDrive.mkdirs(); \n\
-                  try (java.io.InputStream assetStream = getAssets().open(\"game.zip\"); \n\
-                       java.util.zip.ZipInputStream zipStream = new java.util.zip.ZipInputStream(assetStream)) { \n\
-                      java.util.zip.ZipEntry entry; \n\
-                      byte[] buffer = new byte; \n\
-                      while ((entry = zipStream.getNextEntry()) != null) { \n\
-                          File outFile = new File(targetCDrive, entry.getName()); \n\
-                          if (entry.isDirectory()) { outFile.mkdirs(); } else { \n\
-                              File parent = outFile.getParentFile(); \n\
-                              if (parent != null \&\& !parent.exists()) parent.mkdirs(); \n\
-                              try (java.io.FileOutputStream outStream = new java.io.FileOutputStream(outFile)) { \n\
-                                  int len; while ((len = zipStream.read(buffer)) > 0) { outStream.write(buffer, 0, len); } \n\
-                              } \n\
-                          } \n\
-                          zipStream.closeEntry(); \n\
-                      } \n\
-                  } catch (Exception e) { e.printStackTrace(); } \n\
-              }"
+          cat << 'EOF' > "$MAIN_DIR/GameExtractor.java"
+          package com.winlator;
+          import android.content.Context;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.InputStream;
+          import java.util.zip.ZipEntry;
+          import java.util.zip.ZipInputStream;
 
-          # Inject method before class trailing brackets using pipe symbols as character guards
-          sed -i -z "s|\(}\s*}\s*\)$|\n${UNZIP_METHOD_PAYLOAD}\n\1|" "$FOUND_PATH"
+          public class GameExtractor {
+              public static void extractGameZipToWineCDrive(Context context, File imageDir) {
+                  File targetCDrive = new File(imageDir, "drive_c/Program Files/SonicBoll");
+                  if (!targetCDrive.exists()) targetCDrive.mkdirs();
+                  try (InputStream assetStream = context.getAssets().open("game.zip");
+                       ZipInputStream zipStream = new ZipInputStream(assetStream)) {
+                      ZipEntry entry;
+                      byte[] buffer = new byte[1024]; // ✅ FIXED: Size explicitly defined to pass Gradle build compilation
+                      while ((entry = zipStream.getNextEntry()) != null) {
+                          File outFile = new File(targetCDrive, entry.getName());
+                          if (entry.isDirectory()) {
+                              outFile.mkdirs();
+                          } else {
+                              File parent = outFile.getParentFile();
+                              if (parent != null && !parent.exists()) parent.mkdirs();
+                              try (FileOutputStream outStream = new FileOutputStream(outFile)) {
+                                  int len;
+                                  while ((len = zipStream.read(buffer)) > 0) {
+                                      outStream.write(buffer, 0, len);
+                                  }
+                              }
+                          }
+                          zipStream.closeEntry();
+                      }
+                  } catch (Exception e) {
+                      e.printStackTrace();
+                  }
+              }
+          }
+          EOF
+
+      - name: Hook Extractor into Main Execution Cycle
+        run: |
+          # Safely hook into MainActivity's environment initialization tracking window
+          TARGET_FILE=$(find winlator-source/ -name "MainActivity.java" | head -n 1)
+          
+          # Injects the extraction execution line cleanly using standard text translation boundaries
+          sed -i 's|private void preinstallImageOptions() {|private void preinstallImageOptions() { GameExtractor.extractGameZipToWineCDrive(this, imageDir);|g' "$TARGET_FILE"
 
       # ==============================================================
       # COMPILATION PHASES
