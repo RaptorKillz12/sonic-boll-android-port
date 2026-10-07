@@ -38,47 +38,54 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
       # ==============================================================
-      # REMOTE BYPASS: FETCH LARGE ZIP FROM DROPBOX & OVERWRITE ICONS
+      # REMOTE BYPASS & FIX COMPONENT NESTED PATHS
       # ==============================================================
 
       - name: Fetch Large Game Zip and Inject Graphic Resources
         run: |
-          mkdir -p winlator-source/app/src/main/assets/
+          # Double nesting fix: Target 'winlator-source/app/app/' path structure
+          mkdir -p winlator-source/app/app/src/main/assets/
           
           # Download game package safely
           echo "Downloading game archive from Dropbox cloud container..."
-          curl -L "${{ env.GAME_ZIP_URL }}" -o winlator-source/app/src/main/assets/game.zip
+          curl -L "${{ env.GAME_ZIP_URL }}" -o winlator-source/app/app/src/main/assets/game.zip
           
-          if [ ! -s "winlator-source/app/src/main/assets/game.zip" ]; then
+          if [ ! -s "winlator-source/app/app/src/main/assets/game.zip" ]; then
             echo "Error: The download failed or returned an empty file. Make sure your Dropbox URL ends explicitly with dl=1"
             exit 1
           fi
           
-          # Inject custom setup logo screen graphic into drawables
-          mkdir -p winlator-source/app/src/main/res/drawable-nodpi/
+          # Inject custom setup logo screen graphic into drawables (Double nested app patch)
+          mkdir -p winlator-source/app/app/src/main/res/drawable-nodpi/
           
           if [ -f "my-game-repo/sonic_kiosk_logo.png" ]; then
-            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
+            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
             
-            # --- FIXED SECTION: Force the icon folders to exist before copying ---
-            mkdir -p winlator-source/app/src/main/res/mipmap-mdpi/
-            mkdir -p winlator-source/app/src/main/res/mipmap-hdpi/
-            mkdir -p winlator-source/app/src/main/res/mipmap-xhdpi/
-            mkdir -p winlator-source/app/src/main/res/mipmap-xxhdpi/
+            # Force the icon folders to exist inside the double nested structure
+            mkdir -p winlator-source/app/app/src/main/res/mipmap-mdpi/
+            mkdir -p winlator-source/app/app/src/main/res/mipmap-hdpi/
+            mkdir -p winlator-source/app/app/src/main/res/mipmap-xhdpi/
+            mkdir -p winlator-source/app/app/src/main/res/mipmap-xxhdpi/
             
             # Copy your custom image over to replace the stock launcher logos
-            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+            cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
           fi
 
       - name: Force App Name & Re-brand UI Labels
         run: |
-          SED_TARGET="winlator-source/app/src/main/res/values/strings.xml"
-          sed -i 's/name="app_name">Winlator/name="app_name">Sonic Boll Port/g' $SED_TARGET
+          SED_TARGET="winlator-source/app/app/src/main/res/values/strings.xml"
+          if [ -f "$SED_TARGET" ]; then
+            sed -i 's/name="app_name">Winlator/name="app_name">Sonic Boll Port/g' $SED_TARGET
+          else
+            echo "Alternative string layout path checked. Scanning fallback layout strings..."
+            find winlator-source/ -name "strings.xml" -exec sed -i 's/name="app_name">Winlator/name="app_name">Sonic Boll Port/g' {} +
+          fi
 
       - name: Inject Blue Kiosk Layout Interface Overwrite
         run: |
-          cat << 'EOF' > winlator-source/app/src/main/res/layout/content_installation_activity.xml
+          # Overwrites the layout file inside the double-nested directory tree
+          cat << 'EOF' > winlator-source/app/app/src/main/res/layout/content_installation_activity.xml
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://android.com"
               android:layout_width="match_parent"
@@ -130,7 +137,8 @@ jobs:
 
       - name: Inject Core Unzip Automation Engine into Source Code
         run: |
-          TARGET_MAIN_ACTIVITY="winlator-source/app/src/main/java/com/winlator/ContentInstallationActivity.java"
+          # Targeting ContentInstallationActivity.java inside double nested module directory
+          TARGET_MAIN_ACTIVITY="winlator-source/app/app/src/main/java/com/winlator/ContentInstallationActivity.java"
           
           UNZIP_METHOD_PAYLOAD="    private void extractGameZipToWineCDrive(File imageDir) { \n\
                   File targetCDrive = new File(imageDir, \"drive_c/Program Files/SonicBoll\"); \n\
@@ -153,8 +161,16 @@ jobs:
                   } catch (Exception e) { e.printStackTrace(); } \n\
               }"
 
-          sed -i -z "s/\(}\s*}\s*\)$/\n${UNZIP_METHOD_PAYLOAD}\n\1/" $TARGET_MAIN_ACTIVITY
-          sed -i 's/preinstallImageOptions();/extractGameZipToWineCDrive(imageDir); preinstallImageOptions();/g' $TARGET_MAIN_ACTIVITY
+          # Using dynamic fallback search just in case upstream structure changes during initialization
+          if [ -f "$TARGET_MAIN_ACTIVITY" ]; then
+            sed -i -z "s/\(}\s*}\s*\)$/\n${UNZIP_METHOD_PAYLOAD}\n\1/" $TARGET_MAIN_ACTIVITY
+            sed -i 's/preinstallImageOptions();/extractGameZipToWineCDrive(imageDir); preinstallImageOptions();/g' $TARGET_MAIN_ACTIVITY
+          else
+            echo "Dynamic path mapping executed..."
+            FOUND_PATH=$(find winlator-source/ -name "ContentInstallationActivity.java" | head -n 1)
+            sed -i -z "s/\(}\s*}\s*\)$/\n${UNZIP_METHOD_PAYLOAD}\n\1/" $FOUND_PATH
+            sed -i 's/preinstallImageOptions();/extractGameZipToWineCDrive(imageDir); preinstallImageOptions();/g' $FOUND_PATH
+          fi
 
       # ==============================================================
       # COMPILATION PHASES
