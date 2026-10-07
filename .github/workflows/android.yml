@@ -24,7 +24,7 @@ jobs:
         java-version: '17'
         cache: 'gradle'
         # FIXED: Points exactly to the nested subproject root that contains the Android manifest
-        cache-dependency-path: 'winlator/build.gradle'
+        cache-dependency-path: 'build.gradle'
 
     # 3. Inject the native Wine & Box64 environment (.obb) inside the asset directory
     - name: Download and Extract System Environment Files (OBB)
