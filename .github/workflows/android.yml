@@ -13,7 +13,7 @@ on:
 
 jobs:
   build:
-    name: Clone Winlator, Inject Splash & Build APK
+    name: Clone Winlator Submodules & Build APK
     runs-on: ubuntu-latest
 
     steps:
@@ -22,13 +22,18 @@ jobs:
         with:
           path: port-src
 
-      - name: Clone Winlator Source Repository (With Submodules)
+      - name: Clone Main Winlator Repo
         uses: actions/checkout@v4
         with:
           repository: brunodev85/winlator
           path: winlator-src
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Force Full Submodule Init
+        run: |
+          cd winlator-src
+          git submodule update --init --recursive
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -42,19 +47,29 @@ jobs:
         with:
           ndk-version: r25c
 
-      - name: Create Required Directories
+      - name: Locate Android App Root
         run: |
-          mkdir -p winlator-src/app/src/main/assets/
-          mkdir -p winlator-src/app/src/main/res/layout/
-          mkdir -p winlator-src/app/src/main/java/com/winlator/
+          # Find directory containing build.gradle inside app submodule
+          APP_DIR=$(find winlator-src/app -type f -name "build.gradle" | head -n 1 | xargs dirname)
+          if [ -z "$APP_DIR" ]; then
+            APP_DIR="winlator-src/app"
+          fi
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
+          echo "Found Android app directory at: $APP_DIR"
+
+      - name: Create Assets and Layout Folders
+        run: |
+          mkdir -p $APP_DIR/src/main/assets/
+          mkdir -p $APP_DIR/src/main/res/layout/
+          mkdir -p $APP_DIR/src/main/java/com/winlator/
 
       - name: Download Game Zip from Dropbox
         run: |
-          curl -L -o winlator-src/app/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
+          curl -L -o $APP_DIR/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
 
       - name: Override Splash Layout XML (Image + Text + Space + Text + ProgressBar)
         run: |
-          cat << 'EOF' > winlator-src/app/src/main/res/layout/splash_activity.xml
+          cat << 'EOF' > ${{ env.APP_DIR }}/src/main/res/layout/splash_activity.xml
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
               android:layout_width="match_parent"
@@ -109,9 +124,9 @@ jobs:
           </LinearLayout>
           EOF
 
-      - name: Create Dedicated Splash Launcher Activity
+      - name: Inject Dedicated Splash Launcher Activity
         run: |
-          cat << 'EOF' > winlator-src/app/src/main/java/com/winlator/SplashActivity.java
+          cat << 'EOF' > ${{ env.APP_DIR }}/src/main/java/com/winlator/SplashActivity.java
           package com.winlator;
 
           import android.content.Intent;
@@ -188,53 +203,46 @@ jobs:
           }
           EOF
 
-      - name: Update AndroidManifest Launcher Intent
+      - name: Patch AndroidManifest Launcher Intent
         run: |
-          # Swap launcher intent filter to force SplashActivity as launcher
           python3 -c '
-          import re
-          manifest_path = "winlator-src/app/src/main/AndroidManifest.xml"
-          with open(manifest_path, "r") as f:
-              content = f.read()
+          import os, re, glob
+          manifest_paths = glob.glob("winlator-src/**/AndroidManifest.xml", recursive=True)
+          if manifest_paths:
+              manifest_path = manifest_paths[0]
+              print("Patching manifest at:", manifest_path)
+              with open(manifest_path, "r") as f:
+                  content = f.read()
 
-          # Register SplashActivity and make it MAIN/LAUNCHER
-          splash_entry = """
-          <activity android:name="com.winlator.SplashActivity" android:exported="true" android:theme="@style/Theme.Winlator">
-              <intent-filter>
-                  <action android:name="android.intent.action.MAIN" />
-                  <category android:name="android.intent.category.LAUNCHER" />
-              </intent-filter>
-          </activity>
-          """
-          
-          # Remove existing LAUNCHER category from MainActivity
-          content = re.sub(r"<category\s+android:name=\"android\.intent\.category\.LAUNCHER\"\s*/>", "", content)
-          
-          # Inject SplashActivity before closing application tag
-          content = content.replace("</application>", splash_entry + "\n</application>")
-          
-          with open(manifest_path, "w") as f:
-              f.write(content)
+              splash_entry = """
+              <activity android:name="com.winlator.SplashActivity" android:exported="true" android:theme="@style/Theme.Winlator">
+                  <intent-filter>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent-filter>
+              </activity>
+              """
+              
+              content = re.sub(r"<category\s+android:name=\"android\.intent\.category\.LAUNCHER\"\s*/>", "", content)
+              content = content.replace("</application>", splash_entry + "\n</application>")
+              
+              with open(manifest_path, "w") as f:
+                  f.write(content)
           '
 
-      - name: Setup Gradle Wrapper and Build APK
+      - name: Build Gradle APK
         run: |
-          if [ -f "winlator-src/gradlew" ]; then
-            cd winlator-src
-            chmod +x gradlew
-            ./gradlew assembleDebug --stacktrace
-          elif [ -f "winlator-src/app/gradlew" ]; then
-            cd winlator-src/app
+          cd ${{ env.APP_DIR }}
+          if [ -f "gradlew" ]; then
             chmod +x gradlew
             ./gradlew assembleDebug --stacktrace
           else
-            cd winlator-src
             gradle wrapper
             chmod +x gradlew
             ./gradlew assembleDebug --stacktrace
           fi
 
-      - name: Find and Copy Output APK
+      - name: Collect and Copy Output APK
         run: |
           mkdir -p output_apk
           find winlator-src/ -type f -name "*.apk" -exec cp {} output_apk/ \;
