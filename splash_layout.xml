@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#808080">
+
+    <!-- Game Image -->
+    <ImageView
+        android:id="@+id/game_image"
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="80dp"
+        android:src="@drawable/ic_launcher_foreground"
+        android:contentDescription="@string/app_name" />
+
+    <!-- Game Title Text -->
+    <TextView
+        android:id="@+id/game_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/game_image"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="30dp"
+        android:text="Sonic Ball"
+        android:textSize="32sp"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold" />
+
+    <!-- Spacing Text -->
+    <TextView
+        android:id="@+id/spacing_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/game_title"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="20dp"
+        android:text="Preparing Game..."
+        android:textSize="16sp"
+        android:textColor="#E0E0E0" />
+
+    <!-- Progress Bar -->
+    <ProgressBar
+        android:id="@+id/progress_bar"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/spacing_text"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="40dp"
+        android:indeterminate="true"
+        android:indeterminateTint="#FFFFFF" />
+
+    <!-- Loading Status Text -->
+    <TextView
+        android:id="@+id/status_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/progress_bar"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="30dp"
+        android:text="Loading..."
+        android:textSize="14sp"
+        android:textColor="#CCCCCC" />
+
+</RelativeLayout>
