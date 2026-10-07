@@ -1,20 +1,20 @@
 name: Build Standalone Sonic Boll APK
 
 on:
-  workflow_dispatch: # Allows manual trigger from the GitHub actions page
+  workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clone the complete Winlator codebase directly into your root workspace
+    # 1. Clone the complete Winlator app codebase directly into the root workspace
     - name: Checkout Source Code
       uses: actions/checkout@v4
       with:
-        repository: 'brunodev85/winlator'
+        repository: 'brunodev85/winlator-app'
         ref: 'main'
-        submodules: 'recursive' # Pulls the vital native underlying submodule files
+        submodules: 'recursive'
 
     # 2. Set up the matching Java Runtime (JDK 17) pointing to the root gradle setup
     - name: Set up JDK 17
@@ -23,32 +23,38 @@ jobs:
         distribution: 'zulu'
         java-version: '17'
         cache: 'gradle'
-        # FIXED: Points exactly to the actual file checked out at the root level
         cache-dependency-path: 'build.gradle'
 
     # 3. Inject the native Wine & Box64 environment (.obb) inside the asset directory
     - name: Download and Extract System Environment Files (OBB)
       run: |
         mkdir -p app/src/main/assets
-        # FIXED: Patched the dead "github.com" placeholder string with the true native system file engine image URL
-        curl -L -o winlator_fs.zip "https://github.com"
+        curl -L -o winlator_fs.zip "https://github.com/brunodev85/winlator/releases/download/v7.1.3/main.71300.com.winlator.obb"
         mv winlator_fs.zip app/src/main/assets/main.obb
 
-    # 4. Grab your exact Dropbox zip and flatten your custom nested folder paths
-    - name: Inject Custom Game Files (Sonic Boll)
+    # 4. Grab the Dropbox zip, extract it, strip the specified folders, and keep the core game/dlls inside app assets
+    - name: Inject and Strip Custom Game Files (Sonic Boll)
       run: |
         mkdir -p app/src/main/assets/temp_extract
-        # Pulls your exact file from your Dropbox link
-        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=l0wc8d7v&dl=1"
+        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=a5j8z9ou&dl=1"
         unzip game.zip -d app/src/main/assets/temp_extract/
         
-        # Flattens your nested structure so the inner "PK game" contents become the root "game_files" folder
+        # Isolate the core game files from the nested zip path
         mkdir -p app/src/main/assets/game_files
         cp -r "app/src/main/assets/temp_extract/game/PK game/." app/src/main/assets/game_files/
+        
+        # Hard restriction: Remove bundles, mods, skins, and save directories completely from the app package
+        rm -rf app/src/main/assets/game_files/bundles
+        rm -rf app/src/main/assets/game_files/mods
+        rm -rf app/src/main/assets/game_files/skins
+        rm -rf app/src/main/assets/game_files/save
+        rm -rf app/src/main/assets/game_files/saves
+        
         rm -rf app/src/main/assets/temp_extract
         rm game.zip
 
-        # Verification step to confirm your real executable layout
+        # Verification step to confirm your core executable layout and stripped content
+        echo "=== Verifying stripped game asset directory ==="
         ls -la app/src/main/assets/game_files/
 
     # 5. Programmatically hardcode the launch sequence to target SonicBoll on app open
@@ -56,7 +62,7 @@ jobs:
       run: |
         JAVA_FILE="app/src/main/java/com/winlator/MainActivity.java"
         
-        # Rewrites the initialization flow to generate a container and execute your exact file cleanly
+        # Rewrites the initialization flow to generate an internal container environment and execute the file path cleanly
         sed -i '/super.onCreate(savedInstanceState);/a \
         com.winlator.container.ContainerManager cm = new com.winlator.container.ContainerManager(this);\
         com.winlator.container.Container container = cm.getContainer(1);\
@@ -76,13 +82,13 @@ jobs:
     # 6. Repackage the Application Package Metadata to completely obscure Winlator branding strings
     - name: Whitelabel Application Identity
       run: |
-        # Update app interface interface labels
+        # Update app interface strings
         sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' app/src/main/res/values/strings.xml
         
         # Override manifest bundle signature to avoid system app naming conflicts On-Device
         sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' app/build.gradle
 
-    # 7. Execute compilation directly from the workspace root and sign the output package
+    # 7. Execute compilation from the workspace root and sign the output package
     - name: Build and Sign Standalone Release APK
       run: |
         chmod +x gradlew
