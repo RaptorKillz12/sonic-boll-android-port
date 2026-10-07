@@ -56,10 +56,9 @@ jobs:
           echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
           echo "Found Android app directory at: $APP_DIR"
 
-      - name: Create Assets and Layout Folders
+      - name: Create Assets Directory
         run: |
           mkdir -p $APP_DIR/src/main/assets/
-          mkdir -p $APP_DIR/src/main/res/layout/
 
       - name: Download Game Zip from Dropbox
         run: |
@@ -77,12 +76,16 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
+              # Add missing java.io.File import
+              if "import java.io.File;" not in content:
+                  content = "import java.io.File;\n" + content
+
               # Inject custom zip extraction & container launcher code
               custom_launch_code = """
               private void checkAndAutoLaunchGame() {
                   new Thread(() -> {
                       try {
-                          File targetDir = new File(getFilesDir(), "image/drive_c/SonicBoll");
+                          java.io.File targetDir = new java.io.File(getFilesDir(), "image/drive_c/SonicBoll");
                           if (!targetDir.exists()) {
                               targetDir.mkdirs();
                               try (java.io.InputStream is = getAssets().open("game.zip");
@@ -90,7 +93,7 @@ jobs:
                                   java.util.zip.ZipEntry entry;
                                   byte[] buffer = new byte[8192];
                                   while ((entry = zis.getNextEntry()) != null) {
-                                      File file = new File(targetDir, entry.getName());
+                                      java.io.File file = new java.io.File(targetDir, entry.getName());
                                       if (entry.isDirectory()) {
                                           file.mkdirs();
                                       } else {
@@ -109,9 +112,14 @@ jobs:
                           runOnUiThread(() -> {
                               try {
                                   com.winlator.container.ContainerManager manager = new com.winlator.container.ContainerManager(this);
-                                  com.winlator.container.Container container = manager.getContainers().isEmpty() 
-                                      ? manager.createContainer(com.winlator.container.Container.DEFAULT_CONFIG) 
-                                      : manager.getContainers().get(0);
+                                  com.winlator.container.Container container;
+                                  if (manager.getContainers().isEmpty()) {
+                                      com.winlator.core.JSONObjectData data = new com.winlator.core.JSONObjectData();
+                                      data.put("name", "SonicBoll");
+                                      container = manager.createContainer(data);
+                                  } else {
+                                      container = manager.getContainers().get(0);
+                                  }
 
                                   android.content.Intent intent = new android.content.Intent(this, com.winlator.XServerDisplayActivity.class);
                                   intent.putExtra("container_id", container.id);
