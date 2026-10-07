@@ -114,7 +114,7 @@ jobs:
                                   com.winlator.container.ContainerManager manager = new com.winlator.container.ContainerManager(this);
                                   com.winlator.container.Container container;
                                   if (manager.getContainers().isEmpty()) {
-                                      com.winlator.core.JSONObjectData data = new com.winlator.core.JSONObjectData();
+                                      org.json.JSONObject data = new org.json.JSONObject();
                                       data.put("name", "SonicBoll");
                                       container = manager.createContainer(data);
                                   } else {
