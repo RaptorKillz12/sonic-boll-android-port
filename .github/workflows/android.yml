@@ -49,7 +49,6 @@ jobs:
 
       - name: Locate Android App Root
         run: |
-          # Find directory containing build.gradle inside app submodule
           APP_DIR=$(find winlator-src/app -type f -name "build.gradle" | head -n 1 | xargs dirname)
           if [ -z "$APP_DIR" ]; then
             APP_DIR="winlator-src/app"
@@ -215,7 +214,7 @@ jobs:
                   content = f.read()
 
               splash_entry = """
-              <activity android:name="com.winlator.SplashActivity" android:exported="true" android:theme="@style/Theme.Winlator">
+              <activity android:name="com.winlator.SplashActivity" android:exported="true" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
                   <intent-filter>
                       <action android:name="android.intent.action.MAIN" />
                       <category android:name="android.intent.category.LAUNCHER" />
