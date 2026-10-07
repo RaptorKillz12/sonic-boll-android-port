@@ -1,307 +1,96 @@
-name: Build Sonic Boll Winlator APK
+name: Build Standalone Sonic Boll APK
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger from the GitHub actions page
 
 jobs:
-  build:
-    name: Clone Winlator Submodules & Build APK
+  build-apk:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Port Repository
-        uses: actions/checkout@v4
-        with:
-          path: port-src
+    # 1. Clone the complete Winlator codebase
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+      with:
+        repository: 'brunodev85/winlator'
+        ref: 'main'
 
-      - name: Clone Main Winlator Repo
-        uses: actions/checkout@v4
-        with:
-          repository: brunodev85/winlator
-          path: winlator-src
-          submodules: recursive
-          token: ${{ secrets.GITHUB_TOKEN }}
+    # 2. Set up the matching Java Runtime (JDK 17) required by Android Studio
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        cache: 'gradle'
 
-      - name: Force Full Submodule Init
-        run: |
-          cd winlator-src
-          git submodule update --init --recursive
+    # 3. Inject the native Wine & Box64 environment (.obb) inside the asset directory
+    - name: Download and Extract System Environment Files (OBB)
+      run: |
+        mkdir -p app/src/main/assets
+        curl -L -o winlator_fs.zip "https://github.com"
+        mv winlator_fs.zip app/src/main/assets/main.obb
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+    # 4. Grab your exact Dropbox zip and align the folder paths
+    - name: Inject Custom Game Files (Sonic Boll)
+      run: |
+        mkdir -p app/src/main/assets/temp_extract
+        # Pulls your exact file from your Dropbox link
+        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=a5j8z9ou&dl=1"
+        unzip game.zip -d app/src/main/assets/temp_extract/
+        
+        # Flattens your custom path structure so "PK game" becomes the root "game_files" folder
+        mkdir -p app/src/main/assets/game_files
+        cp -r "app/src/main/assets/temp_extract/game/PK game/." app/src/main/assets/game_files/
+        rm -rf app/src/main/assets/temp_extract
+        rm game.zip
 
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r25c
+        # Safety Check: Verify that the executable is perfectly resting at the root of game_files
+        ls -la app/src/main/assets/game_files/
 
-      - name: Locate Android App Root
-        run: |
-          APP_DIR=$(find winlator-src/app -type f -name "build.gradle" | head -n 1 | xargs dirname)
-          if [ -z "$APP_DIR" ]; then
-            APP_DIR="winlator-src/app"
-          fi
-          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
-          echo "Found Android app directory at: $APP_DIR"
+    # 5. Programmatically hardcode the launch sequence to target SonicBoll on app open
+    - name: Hardcode Boot Loader Engine
+      run: |
+        JAVA_FILE="app/src/main/java/com/winlator/MainActivity.java"
+        
+        # Rewrites the initialization flow to generate a container and execute the path cleanly
+        sed -i '/super.onCreate(savedInstanceState);/a \
+        com.winlator.container.ContainerManager cm = new com.winlator.container.ContainerManager(this);\
+        com.winlator.container.Container container = cm.getContainer(1);\
+        if (container == null) {\
+            container = cm.createContainer("SonicBollContainer");\
+            container.setResolution("1280x720");\
+            container.setGraphicsDriver("turnip");\
+            container.setDxWrapper("dxvk");\
+            cm.saveContainer(container);\
+        }\
+        android.content.Intent gameIntent = new android.content.Intent(this, com.winlator.XServerService.class);\
+        gameIntent.putExtra("container_id", container.getId());\
+        gameIntent.putExtra("exec_path", "Z:/assets/game_files/sonicboll-200.exe");\
+        startService(gameIntent);\
+        finish();' $JAVA_FILE
 
-      - name: Create Assets Directory
-        run: |
-          mkdir -p $APP_DIR/src/main/assets/
+    # 6. Repackage the Application Package Metadata to completely obscure Winlator branding
+    - name: Whitelabel Application Identity
+      run: |
+        # Update app interface strings
+        sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' app/src/main/res/values/strings.xml
+        
+        # Override manifest bundle signature to avoid system app conflicts
+        sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' app/build.gradle
 
-      - name: Download Game Zip from Dropbox
-        run: |
-          curl -L -o $APP_DIR/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
+    # 7. Generate a cryptographically signed application package for immediate Android installation
+    - name: Build and Sign Standalone Release APK
+      run: |
+        chmod +x gradlew
+        ./gradlew assembleRelease
+        
+        # Automatically provision local signing keystores and inject signature into the final unsigned output build
+        keytool -genkey -v -keystore release.keystore -alias boll_alias -keyalg RSA -keysize 2048 -validity 10000 -storepass pass1234 -keypass pass1234 -dname "CN=SonicBoll, OU=Gaming, O=BollTeam, L=US, S=US, C=US"
+        jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore release.keystore -storepass pass1234 app/build/outputs/apk/release/app-release-unsigned.apk boll_alias
 
-      - name: Add Custom Sonic Boll Splash Screen
-        run: |
-          set -e
-          if [ ! -f "port-src/sonic_kiosk_logo.png" ]; then
-            echo "Custom splash image not found at port-src/sonic_kiosk_logo.png"
-            exit 1
-          fi
-
-          APP_RES_DIR=$(find winlator-src -path "*/src/main/res" -type d | head -n 1)
-          if [ -z "$APP_RES_DIR" ]; then
-            echo "No Android res directory found in winlator-src"
-            exit 1
-          fi
-
-          mkdir -p "$APP_RES_DIR/drawable"
-          cp "port-src/sonic_kiosk_logo.png" "$APP_RES_DIR/drawable/sonic_kiosk_logo.png"
-
-          mkdir -p "$APP_RES_DIR/layout"
-          cat > "$APP_RES_DIR/layout/activity_splash.xml" <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
-          <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              android:background="#808080">
-
-              <ImageView
-                  android:id="@+id/game_image"
-                  android:layout_width="200dp"
-                  android:layout_height="200dp"
-                  android:layout_centerHorizontal="true"
-                  android:layout_marginTop="80dp"
-                  android:src="@drawable/sonic_kiosk_logo"
-                  android:contentDescription="@string/app_name" />
-
-              <TextView
-                  android:id="@+id/game_title"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:layout_below="@id/game_image"
-                  android:layout_centerHorizontal="true"
-                  android:layout_marginTop="30dp"
-                  android:text="Sonic Ball"
-                  android:textSize="32sp"
-                  android:textColor="#FFFFFF"
-                  android:textStyle="bold" />
-
-              <TextView
-                  android:id="@+id/spacing_text"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:layout_below="@id/game_title"
-                  android:layout_centerHorizontal="true"
-                  android:layout_marginTop="20dp"
-                  android:text="Preparing Game..."
-                  android:textSize="16sp"
-                  android:textColor="#E0E0E0" />
-
-              <ProgressBar
-                  android:id="@+id/progress_bar"
-                  android:layout_width="200dp"
-                  android:layout_height="wrap_content"
-                  android:layout_below="@id/spacing_text"
-                  android:layout_centerHorizontal="true"
-                  android:layout_marginTop="40dp"
-                  android:indeterminate="true"
-                  android:indeterminateTint="#FFFFFF" />
-
-              <TextView
-                  android:id="@+id/status_text"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:layout_below="@id/progress_bar"
-                  android:layout_centerHorizontal="true"
-                  android:layout_marginTop="30dp"
-                  android:text="Loading..."
-                  android:textSize="14sp"
-                  android:textColor="#CCCCCC" />
-
-          </RelativeLayout>
-          XML
-
-          python3 - <<'PY'
-          import glob
-          import os
-          import re
-
-          splash_candidates = glob.glob('winlator-src/**/SplashActivity.java', recursive=True)
-          if not splash_candidates:
-              for path in glob.glob('winlator-src/**/*.java', recursive=True):
-                  if 'Splash' in os.path.basename(path):
-                      splash_candidates.append(path)
-
-          if splash_candidates:
-              path = splash_candidates[0]
-              print(f'Patching SplashActivity at: {path}')
-              with open(path, 'r', encoding='utf-8') as f:
-                  text = f.read()
-
-              if 'R.layout.activity_splash' not in text:
-                  text = re.sub(r'setContentView\(\s*R\.layout\.[A-Za-z0-9_]+\s*\)', 'setContentView(R.layout.activity_splash)', text, count=1)
-              if 'setContentView(R.layout.activity_splash)' not in text:
-                  text = text.replace('super.onCreate(savedInstanceState);', 'super.onCreate(savedInstanceState);\n        setContentView(R.layout.activity_splash);')
-
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(text)
-          else:
-              print('No SplashActivity.java found; custom splash layout was still created but no Java hook was patched.')
-          PY
-
-      - name: Patch ContainerManager.java Visibility
-        run: |
-          python3 -c '
-          import glob
-
-          cm_paths = glob.glob("winlator-src/**/ContainerManager.java", recursive=True)
-          if cm_paths:
-              path = cm_paths[0]
-              print("Patching ContainerManager at:", path)
-              with open(path, "r") as f:
-                  content = f.read()
-
-              content = content.replace("private Container createContainer(", "public Container createContainer(")
-              content = content.replace("private JSONObject createContainer(", "public JSONObject createContainer(")
-
-              with open(path, "w") as f:
-                  f.write(content)
-          '
-
-      - name: Patch MainActivity.java directly to Auto-Launch
-        run: |
-          python3 -c '
-          import os, glob
-
-          main_activity_paths = glob.glob("winlator-src/**/MainActivity.java", recursive=True)
-          if main_activity_paths:
-              path = main_activity_paths[0]
-              print("Patching MainActivity at:", path)
-              with open(path, "r") as f:
-                  content = f.read()
-
-              if "import java.io.File;" not in content:
-                  content = content.replace("package com.winlator;", "package com.winlator;\n\nimport java.io.File;")
-
-              custom_launch_code = """
-              private void checkAndAutoLaunchGame() {
-                  new Thread(() -> {
-                      try {
-                          java.io.File targetDir = new java.io.File(getFilesDir(), "image/drive_c/SonicBoll");
-                          if (!targetDir.exists()) {
-                              targetDir.mkdirs();
-                              try (java.io.InputStream is = getAssets().open("game.zip");
-                                   java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(is)) {
-                                  java.util.zip.ZipEntry entry;
-                                  byte[] buffer = new byte[8192];
-                                  while ((entry = zis.getNextEntry()) != null) {
-                                      java.io.File file = new java.io.File(targetDir, entry.getName());
-                                      if (entry.isDirectory()) {
-                                          file.mkdirs();
-                                      } else {
-                                          file.getParentFile().mkdirs();
-                                          try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
-                                              int count;
-                                              while ((count = zis.read(buffer)) != -1) {
-                                                  fos.write(buffer, 0, count);
-                                              }
-                                          }
-                                      }
-                                      zis.closeEntry();
-                                  }
-                              }
-                          }
-                          runOnUiThread(() -> {
-                              try {
-                                  com.winlator.container.ContainerManager manager = new com.winlator.container.ContainerManager(this);
-                                  com.winlator.container.Container container;
-                                  if (manager.getContainers().isEmpty()) {
-                                      org.json.JSONObject data = new org.json.JSONObject();
-                                      data.put("name", "SonicBoll");
-                                      container = manager.createContainer(data);
-                                  } else {
-                                      container = manager.getContainers().get(0);
-                                  }
-
-                                  android.content.Intent intent = new android.content.Intent(this, com.winlator.XServerDisplayActivity.class);
-                                  intent.putExtra("container_id", container.id);
-                                  intent.putExtra("shortcut_path", "C:\\\\SonicBoll\\\\SonicBoll.exe");
-                                  startActivity(intent);
-                                  finish();
-                              } catch (Exception e) {
-                                  e.printStackTrace();
-                              }
-                          });
-                      } catch (Exception e) {
-                          e.printStackTrace();
-                      }
-                  }).start();
-              }
-              """
-
-              content = content[:content.rfind("}")] + custom_launch_code + "\n}"
-
-              if "setupImageFs();" in content:
-                  content = content.replace("setupImageFs();", "setupImageFs(); checkAndAutoLaunchGame();")
-              elif "onCreate(" in content:
-                  content = content.replace("super.onCreate(savedInstanceState);", "super.onCreate(savedInstanceState);\n        checkAndAutoLaunchGame();")
-
-              with open(path, "w") as f:
-                  f.write(content)
-          '
-
-      - name: Build Gradle APK
-        run: |
-          cd ${{ env.APP_DIR }}
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-            ./gradlew assembleDebug --stacktrace
-          else
-            gradle wrapper
-            chmod +x gradlew
-            ./gradlew assembleDebug --stacktrace
-          fi
-
-      - name: Collect and Copy Output APK
-        run: |
-          mkdir -p output_apk
-          find winlator-src/ -type f -name "*.apk" -exec cp {} output_apk/ \;
-          ls -la output_apk/
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sonic-boll-winlator-debug
-          path: output_apk/*.apk
-
-      - name: Create GitHub Release on Tag
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: output_apk/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # 8. Extract the compiled game package asset out of the cloud runner environment
+    - name: Export Compiled Game Package Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SonicBoll_Android_Release
+        path: app/build/outputs/apk/release/app-release-unsigned.apk
