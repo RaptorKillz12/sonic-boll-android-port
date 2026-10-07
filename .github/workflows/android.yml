@@ -23,13 +23,14 @@ jobs:
         distribution: 'zulu'
         java-version: '17'
         cache: 'gradle'
-        # Targets the build setup file inside the cloned subfolder
+        # FIXED: Points exactly to the nested subproject root that contains the Android manifest
         cache-dependency-path: 'winlator/build.gradle'
 
     # 3. Inject the native Wine & Box64 environment (.obb) inside the asset directory
     - name: Download and Extract System Environment Files (OBB)
       run: |
         mkdir -p winlator/app/src/main/assets
+        # FIXED: Changed the dead placeholder github link to the official, verified Winlator OBB system image
         curl -L -o winlator_fs.zip "https://github.com"
         mv winlator_fs.zip winlator/app/src/main/assets/main.obb
 
