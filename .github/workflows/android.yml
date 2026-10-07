@@ -64,6 +64,26 @@ jobs:
         run: |
           curl -L -o $APP_DIR/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
 
+      - name: Patch ContainerManager.java Visibility
+        run: |
+          python3 -c '
+          import glob
+
+          cm_paths = glob.glob("winlator-src/**/ContainerManager.java", recursive=True)
+          if cm_paths:
+              path = cm_paths[0]
+              print("Patching ContainerManager at:", path)
+              with open(path, "r") as f:
+                  content = f.read()
+
+              # Convert private createContainer methods to public
+              content = content.replace("private Container createContainer(", "public Container createContainer(")
+              content = content.replace("private JSONObject createContainer(", "public JSONObject createContainer(")
+
+              with open(path, "w") as f:
+                  f.write(content)
+          '
+
       - name: Patch MainActivity.java directly to Auto-Launch
         run: |
           python3 -c '
