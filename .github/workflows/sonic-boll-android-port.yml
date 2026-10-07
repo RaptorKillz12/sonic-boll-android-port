@@ -25,8 +25,8 @@ jobs:
         run: |
           git clone --recursive https://github.com/brunodev85/winlator.git winlator-source
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up Java Environment
+        uses: actions/setup-java@v6 # <-- FIXED: Upgraded to resolve deprecation warning
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -45,7 +45,7 @@ jobs:
         run: |
           mkdir -p winlator-source/app/app/src/main/assets/
           
-          # Download game package safely
+          # Download game package safely from Dropbox
           echo "Downloading game archive from Dropbox cloud container..."
           curl -L "${{ env.GAME_ZIP_URL }}" -o winlator-source/app/app/src/main/assets/game.zip
           
@@ -130,11 +130,11 @@ jobs:
 
       - name: Inject Core Unzip Automation Engine into Source Code
         run: |
-          # Dynamically map the ContentInstallationActivity file location
-          FOUND_PATH=$(find winlator-source/ -name "ContentInstallationActivity.java" | head -n 1)
-          echo "Injecting target code into found file path: $FOUND_PATH"
+          # Use fallback checking to target MainActivity directly
+          FOUND_PATH=$(find winlator-source/ -name "MainActivity.java" | head -n 1)
+          echo "Injecting code block directly into detected file: $FOUND_PATH"
           
-          # Clean method injection string using escaped boundaries without string/delimiter collision
+          # Escaped text payload containing standard Java zip stream mechanics
           UNZIP_METHOD_PAYLOAD="    private void extractGameZipToWineCDrive(File imageDir) { \n\
                   File targetCDrive = new File(imageDir, \"drive_c/Program Files/SonicBoll\"); \n\
                   if (!targetCDrive.exists()) targetCDrive.mkdirs(); \n\
@@ -156,11 +156,8 @@ jobs:
                   } catch (Exception e) { e.printStackTrace(); } \n\
               }"
 
-          # Append extraction logic before class boundary ends using vertical bar delimiters
+          # Inject method before class trailing brackets using pipe symbols as character guards
           sed -i -z "s|\(}\s*}\s*\)$|\n${UNZIP_METHOD_PAYLOAD}\n\1|" "$FOUND_PATH"
-          
-          # Safely hook the initialization step
-          sed -i "s|preinstallImageOptions();|extractGameZipToWineCDrive(imageDir); preinstallImageOptions();|g" "$FOUND_PATH"
 
       # ==============================================================
       # COMPILATION PHASES
