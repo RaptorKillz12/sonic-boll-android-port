@@ -127,9 +127,17 @@ jobs:
           </LinearLayout>
           EOF
 
+      - name: Bypass Large Asset Compression Failures
+        run: |
+          # Locate the nested application module build configuration
+          GRADLE_CONFIG=$(find winlator-source/ -name "build.gradle" | grep "app/app" | head -n 1)
+          
+          # Injects an internal instruction rule ensuring AAPT leaves the game.zip archive uncompressed.
+          # This frees up JVM Heap memory allocations and completely prevents the compressDebugAssets crash.
+          sed -i '/android {/a \    aaptOptions {\n        noCompress "zip"\n    }' "$GRADLE_CONFIG"
+
       - name: Create Dedicated Game Unzipper Class
         run: |
-          # Dynamically locate the package path to create GameExtractor.java right next to MainActivity
           MAIN_DIR=$(dirname $(find winlator-source/ -name "MainActivity.java" | head -n 1))
           
           cat << 'EOF' > "$MAIN_DIR/GameExtractor.java"
@@ -148,7 +156,7 @@ jobs:
                   try (InputStream assetStream = context.getAssets().open("game.zip");
                        ZipInputStream zipStream = new ZipInputStream(assetStream)) {
                       ZipEntry entry;
-                      byte[] buffer = new byte[1024]; // ✅ FIXED: Size explicitly defined to pass Gradle build compilation
+                      byte[] buffer = new byte[1024]; // Safe buffered data-stream configuration boundary
                       while ((entry = zipStream.getNextEntry()) != null) {
                           File outFile = new File(targetCDrive, entry.getName());
                           if (entry.isDirectory()) {
@@ -174,10 +182,7 @@ jobs:
 
       - name: Hook Extractor into Main Execution Cycle
         run: |
-          # Safely hook into MainActivity's environment initialization tracking window
           TARGET_FILE=$(find winlator-source/ -name "MainActivity.java" | head -n 1)
-          
-          # Injects the extraction execution line cleanly using standard text translation boundaries
           sed -i 's|private void preinstallImageOptions() {|private void preinstallImageOptions() { GameExtractor.extractGameZipToWineCDrive(this, imageDir);|g' "$TARGET_FILE"
 
       # ==============================================================
