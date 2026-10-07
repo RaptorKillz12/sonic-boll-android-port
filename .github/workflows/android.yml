@@ -64,6 +64,115 @@ jobs:
         run: |
           curl -L -o $APP_DIR/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
 
+      - name: Add Custom Sonic Boll Splash Screen
+        run: |
+          set -e
+          if [ ! -f "port-src/sonic_kiosk_logo.png" ]; then
+            echo "Custom splash image not found at port-src/sonic_kiosk_logo.png"
+            exit 1
+          fi
+
+          APP_RES_DIR=$(find winlator-src -path "*/src/main/res" -type d | head -n 1)
+          if [ -z "$APP_RES_DIR" ]; then
+            echo "No Android res directory found in winlator-src"
+            exit 1
+          fi
+
+          mkdir -p "$APP_RES_DIR/drawable"
+          cp "port-src/sonic_kiosk_logo.png" "$APP_RES_DIR/drawable/sonic_kiosk_logo.png"
+
+          mkdir -p "$APP_RES_DIR/layout"
+          cat > "$APP_RES_DIR/layout/activity_splash.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="#808080">
+
+              <ImageView
+                  android:id="@+id/game_image"
+                  android:layout_width="200dp"
+                  android:layout_height="200dp"
+                  android:layout_centerHorizontal="true"
+                  android:layout_marginTop="80dp"
+                  android:src="@drawable/sonic_kiosk_logo"
+                  android:contentDescription="@string/app_name" />
+
+              <TextView
+                  android:id="@+id/game_title"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_below="@id/game_image"
+                  android:layout_centerHorizontal="true"
+                  android:layout_marginTop="30dp"
+                  android:text="Sonic Ball"
+                  android:textSize="32sp"
+                  android:textColor="#FFFFFF"
+                  android:textStyle="bold" />
+
+              <TextView
+                  android:id="@+id/spacing_text"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_below="@id/game_title"
+                  android:layout_centerHorizontal="true"
+                  android:layout_marginTop="20dp"
+                  android:text="Preparing Game..."
+                  android:textSize="16sp"
+                  android:textColor="#E0E0E0" />
+
+              <ProgressBar
+                  android:id="@+id/progress_bar"
+                  android:layout_width="200dp"
+                  android:layout_height="wrap_content"
+                  android:layout_below="@id/spacing_text"
+                  android:layout_centerHorizontal="true"
+                  android:layout_marginTop="40dp"
+                  android:indeterminate="true"
+                  android:indeterminateTint="#FFFFFF" />
+
+              <TextView
+                  android:id="@+id/status_text"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_below="@id/progress_bar"
+                  android:layout_centerHorizontal="true"
+                  android:layout_marginTop="30dp"
+                  android:text="Loading..."
+                  android:textSize="14sp"
+                  android:textColor="#CCCCCC" />
+
+          </RelativeLayout>
+          XML
+
+          python3 - <<'PY'
+          import glob
+          import os
+          import re
+
+          splash_candidates = glob.glob('winlator-src/**/SplashActivity.java', recursive=True)
+          if not splash_candidates:
+              for path in glob.glob('winlator-src/**/*.java', recursive=True):
+                  if 'Splash' in os.path.basename(path):
+                      splash_candidates.append(path)
+
+          if splash_candidates:
+              path = splash_candidates[0]
+              print(f'Patching SplashActivity at: {path}')
+              with open(path, 'r', encoding='utf-8') as f:
+                  text = f.read()
+
+              if 'R.layout.activity_splash' not in text:
+                  text = re.sub(r'setContentView\(\s*R\.layout\.[A-Za-z0-9_]+\s*\)', 'setContentView(R.layout.activity_splash)', text, count=1)
+              if 'setContentView(R.layout.activity_splash)' not in text:
+                  text = text.replace('super.onCreate(savedInstanceState);', 'super.onCreate(savedInstanceState);\n        setContentView(R.layout.activity_splash);')
+
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(text)
+          else:
+              print('No SplashActivity.java found; custom splash layout was still created but no Java hook was patched.')
+          PY
+
       - name: Patch ContainerManager.java Visibility
         run: |
           python3 -c '
@@ -76,7 +185,6 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
-              # Convert private createContainer methods to public
               content = content.replace("private Container createContainer(", "public Container createContainer(")
               content = content.replace("private JSONObject createContainer(", "public JSONObject createContainer(")
 
@@ -96,11 +204,9 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
-              # Insert java.io.File import directly after package declaration
               if "import java.io.File;" not in content:
                   content = content.replace("package com.winlator;", "package com.winlator;\n\nimport java.io.File;")
 
-              # Inject custom zip extraction & container launcher code
               custom_launch_code = """
               private void checkAndAutoLaunchGame() {
                   new Thread(() -> {
@@ -157,10 +263,8 @@ jobs:
               }
               """
 
-              # Inject method right before the closing brace of MainActivity
               content = content[:content.rfind("}")] + custom_launch_code + "\n}"
-              
-              # Hook checkAndAutoLaunchGame into standard startup flow
+
               if "setupImageFs();" in content:
                   content = content.replace("setupImageFs();", "setupImageFs(); checkAndAutoLaunchGame();")
               elif "onCreate(" in content:
