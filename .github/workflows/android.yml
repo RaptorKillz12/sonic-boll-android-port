@@ -76,9 +76,9 @@ jobs:
               with open(path, "r") as f:
                   content = f.read()
 
-              # Add missing java.io.File import
+              # Insert java.io.File import directly after package declaration
               if "import java.io.File;" not in content:
-                  content = "import java.io.File;\n" + content
+                  content = content.replace("package com.winlator;", "package com.winlator;\n\nimport java.io.File;")
 
               # Inject custom zip extraction & container launcher code
               custom_launch_code = """
