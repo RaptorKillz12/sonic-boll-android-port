@@ -15,20 +15,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-
-      # ============================================================
-      # CHECKOUT SONIC BOLL PROJECT
-      # ============================================================
-
       - name: Checkout Sonic Boll
         uses: actions/checkout@v4
         with:
           path: sonic-project
-
-
-      # ============================================================
-      # CHECKOUT WINLATOR
-      # ============================================================
 
       - name: Checkout Winlator
         uses: actions/checkout@v4
@@ -38,86 +28,39 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-
-      # ============================================================
-      # JAVA
-      # ============================================================
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-
-
-      # ============================================================
-      # ANDROID SDK
-      # ============================================================
+          java-version: "17"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: ''
-
-
-      # ============================================================
-      # INSTALL ONLY THE REQUIRED SDK PACKAGES
-      # ============================================================
 
       - name: Install Android SDK components
         shell: bash
         run: |
           set -e
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653"
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
-          yes | sdkmanager --licenses >/dev/null || true
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;25.2.9519653"
-
-
-      # ============================================================
-      # FIND GAME.ZIP
-      # ============================================================
-
-      - name: Find Sonic Boll game.zip
+      - name: Find game.zip
         shell: bash
         run: |
           set -e
 
-          GAME_ZIP="$(find "$GITHUB_WORKSPACE/sonic-project" \
-            -type f \
-            -name "game.zip" \
-            -print -quit)"
+          GAME_ZIP="$(find "$GITHUB_WORKSPACE/sonic-project" -type f -name "game.zip" -print -quit)"
 
           if [ -z "$GAME_ZIP" ]; then
             echo "ERROR: game.zip was not found."
-            echo
-            echo "Put game.zip somewhere inside the Sonic Boll repository."
             exit 1
           fi
 
-          echo "Found:"
-          echo "$GAME_ZIP"
+          mkdir -p "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets"
+          cp "$GAME_ZIP" "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
 
-          mkdir -p \
-            "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets"
-
-          cp "$GAME_ZIP" \
-            "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
-
-          ls -lh \
-            "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
-
-
-      # ============================================================
-      # INSTALL LOGO
-      # ============================================================
+          echo "Found game.zip:"
+          ls -lh "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
 
       - name: Install Sonic Boll logo
         shell: bash
@@ -125,29 +68,16 @@ jobs:
           set -e
 
           DRAWABLE="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/res/drawable-nodpi"
-
           mkdir -p "$DRAWABLE"
 
-          LOGO="$(find "$GITHUB_WORKSPACE/sonic-project" \
-            -type f \
-            -name "sonic_kiosk_logo.png" \
-            -print -quit)"
+          LOGO="$(find "$GITHUB_WORKSPACE/sonic-project" -type f -name "sonic_kiosk_logo.png" -print -quit)"
 
-          if [ -n "$LOGO" ]; then
-            echo "Using logo:"
-            echo "$LOGO"
-
-            cp "$LOGO" \
-              "$DRAWABLE/sonic_kiosk_logo.png"
-          else
+          if [ -z "$LOGO" ]; then
             echo "ERROR: sonic_kiosk_logo.png was not found."
             exit 1
           fi
 
-
-      # ============================================================
-      # CUSTOM INSTALLATION SCREEN
-      # ============================================================
+          cp "$LOGO" "$DRAWABLE/sonic_kiosk_logo.png"
 
       - name: Create Sonic Boll installation screen
         shell: bash
@@ -160,7 +90,6 @@ jobs:
 
           cat > "$LAYOUT" <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-
           <LinearLayout
               xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -224,7 +153,6 @@ jobs:
                   android:id="@+id/LLBottomBar"
                   android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
-                  android:layout_height="wrap_content"
                   android:orientation="horizontal"
                   android:visibility="gone">
 
@@ -239,24 +167,16 @@ jobs:
           </LinearLayout>
           EOF
 
-
-      # ============================================================
-      # CREATE SONIC BOLL INSTALLER
-      # ============================================================
-
       - name: Create Sonic Boll installer
         shell: bash
         run: |
           set -e
 
           JAVA_DIR="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator"
-
           mkdir -p "$JAVA_DIR"
 
           cat > "$JAVA_DIR/SonicBollInstaller.java" <<'EOF'
           package com.winlator;
-
-          import android.content.Context;
 
           import com.winlator.xenvironment.RootFS;
 
@@ -275,27 +195,13 @@ jobs:
                       return;
                   }
 
-                  /*
-                   * Sonic Boll installation will be performed
-                   * after the Winlator RootFS is ready.
-                   *
-                   * The game ZIP is bundled in the APK as:
-                   *
-                   * assets/game.zip
-                   */
-
                   android.util.Log.d(
                       "SonicBollInstaller",
-                      "Winlator RootFS ready for Sonic Boll"
+                      "Sonic Boll installer hook reached."
                   );
               }
           }
           EOF
-
-
-      # ============================================================
-      # HOOK SONIC BOLL AFTER ROOTFS
-      # ============================================================
 
       - name: Hook Sonic Boll into RootFS installation
         shell: bash
@@ -305,8 +211,7 @@ jobs:
           TARGET="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java"
 
           if [ ! -f "$TARGET" ]; then
-            echo "ERROR: RootFSInstaller.java not found:"
-            echo "$TARGET"
+            echo "ERROR: RootFSInstaller.java not found."
             exit 1
           fi
 
@@ -321,95 +226,60 @@ jobs:
           hook = "SonicBollInstaller.installIfNeeded(activity);"
 
           if hook in text:
-              print("Sonic Boll hook already exists.")
+              print("Hook already exists.")
               sys.exit(0)
 
-          # Add import if needed.
           import_line = "import com.winlator.SonicBollInstaller;"
 
           if import_line not in text:
-
               lines = text.splitlines()
 
-              insert_at = 0
+              last_import = -1
 
               for i, line in enumerate(lines):
-
                   if line.startswith("import "):
-                      insert_at = i + 1
+                      last_import = i
 
-              lines.insert(insert_at, import_line)
+              if last_import >= 0:
+                  lines.insert(last_import + 1, import_line)
+                  text = "\n".join(lines) + "\n"
 
-              text = "\n".join(lines)
+          target = "resetContainerRFSVersions(activity);"
 
-          # --------------------------------------------------------
-          # Do NOT depend on indentation.
-          #
-          # Find the existing resetContainerRFSVersions call and
-          # put our hook immediately after it.
-          # --------------------------------------------------------
-
-          target_line = "resetContainerRFSVersions(activity);"
-
-          if target_line not in text:
-              print(
-                  "ERROR: resetContainerRFSVersions(activity); "
-                  "was not found."
-              )
+          if target not in text:
+              print("ERROR: resetContainerRFSVersions(activity); not found.")
               sys.exit(1)
 
           text = text.replace(
-              target_line,
-              target_line + "\n                " + hook,
+              target,
+              target + "\n                " + hook,
               1
           )
 
           with open(path, "w", encoding="utf-8") as f:
               f.write(text)
 
-          print("Sonic Boll RootFS hook installed.")
+          print("RootFS hook installed successfully.")
           PY
 
-
-      # ============================================================
-      # VERIFY PATCH
-      # ============================================================
-
-      - name: Verify Sonic Boll modifications
+      - name: Verify modifications
         shell: bash
         run: |
           set -e
 
           ROOTFS="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java"
-
           INSTALLER="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator/SonicBollInstaller.java"
-
           ZIP="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
-
           LAYOUT="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/res/layout/download_progress_dialog.xml"
 
-          grep -q "SonicBollInstaller.installIfNeeded(activity);" "$ROOTFS"
-
+          test -f "$ROOTFS"
           test -f "$INSTALLER"
           test -f "$ZIP"
           test -f "$LAYOUT"
 
-          echo "=========================================="
-          echo "Sonic Boll files verified."
-          echo "=========================================="
+          grep -q "SonicBollInstaller.installIfNeeded(activity);" "$ROOTFS"
 
-          echo
-          echo "RootFS hook:"
-          grep -n "SonicBollInstaller" "$ROOTFS"
-
-          echo
-          echo "Game ZIP:"
-          ls -lh "$ZIP"
-
-
-      # ============================================================
-      # GRADLE MEMORY CONFIGURATION
-      # ============================================================
+          echo "All Sonic Boll files verified."
 
       - name: Configure Gradle
         shell: bash
@@ -421,10 +291,31 @@ jobs:
           org.gradle.workers.max=2
           EOF
 
+      - name: Build APK
+        working-directory: winlator-source/app
+        env:
+          GRADLE_OPTS: "-Xmx4g -Dorg.gradle.daemon=false"
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --no-parallel --max-workers=2 --stacktrace
 
-      # ============================================================
-      # BUILD
-      # ============================================================
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -e
 
-      - name: Build Winlator APK
-        working-directory
+          APK="$GITHUB_WORKSPACE/winlator-source/app/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK was not produced."
+            exit 1
+          fi
+
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonic-Boll-Deluxe-Android
+          path: winlator-source/app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
