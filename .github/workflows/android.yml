@@ -15,44 +15,46 @@ jobs:
         repository: 'brunodev85/winlator'
         ref: 'main'
 
-    # 2. Set up the matching Java Runtime (JDK 17) required by Android Studio
+    # 2. Set up the matching Java Runtime (JDK 17) pointing explicitly to the subfolder path
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
         cache: 'gradle'
+        # Crucial Fix: Forces setup-java to look for gradle properties inside the nested repository subfolder
+        cache-dependency-path: 'winlator/build.gradle'
 
     # 3. Inject the native Wine & Box64 environment (.obb) inside the asset directory
     - name: Download and Extract System Environment Files (OBB)
       run: |
-        mkdir -p app/src/main/assets
+        mkdir -p winlator/app/src/main/assets
         curl -L -o winlator_fs.zip "https://github.com"
-        mv winlator_fs.zip app/src/main/assets/main.obb
+        mv winlator_fs.zip winlator/app/src/main/assets/main.obb
 
-    # 4. Grab your exact Dropbox zip and align the folder paths
+    # 4. Grab your exact Dropbox zip and align the nested folder paths
     - name: Inject Custom Game Files (Sonic Boll)
       run: |
-        mkdir -p app/src/main/assets/temp_extract
+        mkdir -p winlator/app/src/main/assets/temp_extract
         # Pulls your exact file from your Dropbox link
-        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=a5j8z9ou&dl=1"
-        unzip game.zip -d app/src/main/assets/temp_extract/
+        curl -L -o game.zip "https://dropbox.com"
+        unzip game.zip -d winlator/app/src/main/assets/temp_extract/
         
-        # Flattens your custom path structure so "PK game" becomes the root "game_files" folder
-        mkdir -p app/src/main/assets/game_files
-        cp -r "app/src/main/assets/temp_extract/game/PK game/." app/src/main/assets/game_files/
-        rm -rf app/src/main/assets/temp_extract
+        # Flattens your custom path structure so "PK game" contents become the root "game_files" folder
+        mkdir -p winlator/app/src/main/assets/game_files
+        cp -r "winlator/app/src/main/assets/temp_extract/game/PK game/." winlator/app/src/main/assets/game_files/
+        rm -rf winlator/app/src/main/assets/temp_extract
         rm game.zip
 
-        # Safety Check: Verify that the executable is perfectly resting at the root of game_files
-        ls -la app/src/main/assets/game_files/
+        # Verification step to check the executable structure
+        ls -la winlator/app/src/main/assets/game_files/
 
     # 5. Programmatically hardcode the launch sequence to target SonicBoll on app open
     - name: Hardcode Boot Loader Engine
       run: |
-        JAVA_FILE="app/src/main/java/com/winlator/MainActivity.java"
+        JAVA_FILE="winlator/app/src/main/java/com/winlator/MainActivity.java"
         
-        # Rewrites the initialization flow to generate a container and execute the path cleanly
+        # Rewrites the initialization flow to generate a container and execute the path cleanly on layout creation
         sed -i '/super.onCreate(savedInstanceState);/a \
         com.winlator.container.ContainerManager cm = new com.winlator.container.ContainerManager(this);\
         com.winlator.container.Container container = cm.getContainer(1);\
@@ -65,32 +67,33 @@ jobs:
         }\
         android.content.Intent gameIntent = new android.content.Intent(this, com.winlator.XServerService.class);\
         gameIntent.putExtra("container_id", container.getId());\
-        gameIntent.putExtra("exec_path", "Z:/assets/game_files/sonicboll-200.exe");\
+        gameIntent.putExtra("exec_path", "Z:/assets/game_files/SonicBoll.exe");\
         startService(gameIntent);\
         finish();' $JAVA_FILE
 
-    # 6. Repackage the Application Package Metadata to completely obscure Winlator branding
+    # 6. Repackage the Application Package Metadata to completely obscure Winlator branding strings
     - name: Whitelabel Application Identity
       run: |
-        # Update app interface strings
-        sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' app/src/main/res/values/strings.xml
+        # Update app interface interface labels
+        sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' winlator/app/src/main/res/values/strings.xml
         
-        # Override manifest bundle signature to avoid system app conflicts
-        sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' app/build.gradle
+        # Override manifest bundle signature to avoid system app naming conflicts
+        sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' winlator/app/build.gradle
 
-    # 7. Generate a cryptographically signed application package for immediate Android installation
+    # 7. Navigate into the nested build root, allocate permissions, and compile/sign the workspace
     - name: Build and Sign Standalone Release APK
       run: |
+        cd winlator
         chmod +x gradlew
         ./gradlew assembleRelease
         
-        # Automatically provision local signing keystores and inject signature into the final unsigned output build
+        # Automatically provision local signing keys and inject signatures into the unsigned release output path
         keytool -genkey -v -keystore release.keystore -alias boll_alias -keyalg RSA -keysize 2048 -validity 10000 -storepass pass1234 -keypass pass1234 -dname "CN=SonicBoll, OU=Gaming, O=BollTeam, L=US, S=US, C=US"
         jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore release.keystore -storepass pass1234 app/build/outputs/apk/release/app-release-unsigned.apk boll_alias
 
-    # 8. Extract the compiled game package asset out of the cloud runner environment
+    # 8. Extract the compiled game package asset out of the subfolder runner space
     - name: Export Compiled Game Package Artifact
       uses: actions/upload-artifact@v4
       with:
         name: SonicBoll_Android_Release
-        path: app/build/outputs/apk/release/app-release-unsigned.apk
+        path: winlator/app/build/outputs/apk/release/app-release-unsigned.apk
