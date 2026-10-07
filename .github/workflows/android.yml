@@ -1,4 +1,4 @@
-name: Sonic Boll Install Screen
+name: Sonic Boll Android Port
 
 on:
   push:
@@ -11,15 +11,14 @@ env:
   GAME_ZIP_URL: "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=t1pusozp&dl=1"
 
 jobs:
-
   build:
-    name: Build Sonic Boll Winlator APK
+    name: Build Sonic Boll Android APK
     runs-on: ubuntu-22.04
 
     steps:
 
       # ============================================================
-      # CHECK OUT YOUR REPOSITORY
+      # YOUR REPOSITORY
       # ============================================================
 
       - name: Checkout Sonic Boll Assets
@@ -29,33 +28,14 @@ jobs:
 
 
       # ============================================================
-      # DOWNLOAD WINLATOR
+      # WINLATOR
       # ============================================================
 
       - name: Clone Winlator
         run: |
-          git clone --recursive \
-            https://github.com/brunodev85/winlator.git \
-            winlator-source
-
+          git clone --recursive https://github.com/brunodev85/winlator.git winlator-source
           cd winlator-source
-
           git submodule update --init --recursive
-
-          echo "Winlator revision:"
-          git rev-parse HEAD
-
-
-      # ============================================================
-      # VERIFY ANDROID PROJECT
-      # ============================================================
-
-      - name: Verify Winlator
-        run: |
-          test -f winlator-source/app/gradlew
-          test -f winlator-source/app/app/build.gradle
-
-          echo "Winlator Android project found."
 
 
       # ============================================================
@@ -66,296 +46,869 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
 
       # ============================================================
       # ANDROID SDK
       # ============================================================
 
-      - name: Setup Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v4
-
 
       - name: Install Android Components
         run: |
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;25.2.9519653"
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+          sdkmanager "ndk;25.2.9519653"
 
           yes | sdkmanager --licenses || true
 
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" \
-            >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
 
 
       # ============================================================
-      # DOWNLOAD GAME ZIP
+      # GAME ZIP
       # ============================================================
 
-      - name: Download Sonic Boll Game ZIP
-        shell: bash
+      - name: Download game.zip
         run: |
-
-          mkdir -p \
-            winlator-source/app/app/src/main/assets
-
-          echo "Downloading game.zip..."
+          mkdir -p winlator-source/app/app/src/main/assets
 
           curl \
             -L \
             --fail \
             --retry 5 \
             --retry-delay 3 \
-            -A "Mozilla/5.0" \
             "${GAME_ZIP_URL}" \
             -o winlator-source/app/app/src/main/assets/game.zip
 
-          test -s \
-            winlator-source/app/app/src/main/assets/game.zip
+          test -s winlator-source/app/app/src/main/assets/game.zip
 
-          echo "Game ZIP downloaded."
-
-          ls -lh \
-            winlator-source/app/app/src/main/assets/game.zip
+          echo "game.zip:"
+          ls -lh winlator-source/app/app/src/main/assets/game.zip
 
 
       # ============================================================
-      # INSTALL SONIC BOLL INSTALLATION-SCREEN LOGO
+      # SONIC BOLL LOGO
       # ============================================================
 
       - name: Install Sonic Boll Logo
-        shell: bash
         run: |
+          mkdir -p winlator-source/app/app/src/main/res/drawable-nodpi
 
-          mkdir -p \
-            winlator-source/app/app/src/main/res/drawable-nodpi
+          test -f my-game-repo/sonic_kiosk_logo.png
 
-          if [ -f "my-game-repo/sonic_kiosk_logo.png" ]; then
-
-            cp \
-              my-game-repo/sonic_kiosk_logo.png \
-              winlator-source/app/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
-
-            echo "Custom Sonic Boll logo installed."
-
-          else
-
-            echo "ERROR: sonic_kiosk_logo.png was not found."
-
-            echo "Put sonic_kiosk_logo.png in the root of your repository."
-
-            exit 1
-
-          fi
+          cp \
+            my-game-repo/sonic_kiosk_logo.png \
+            winlator-source/app/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
 
 
       # ============================================================
-      # REPLACE INSTALLATION SCREEN LAYOUT
-      #
-      # IMPORTANT:
-      # This changes ONLY the visual installation layout.
-      # It does not modify MainActivity.java.
+      # CUSTOM INSTALLATION SCREEN
       # ============================================================
 
-      - name: Replace Installation Screen
-        shell: bash
+      - name: Replace Winlator Installation Screen
         run: |
+          cat > winlator-source/app/app/src/main/res/layout/download_progress_dialog.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
 
-          LAYOUT_DIR="winlator-source/app/app/src/main/res/layout"
+          <LinearLayout
+              xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:gravity="center"
+              android:background="#121212"
+              android:padding="24dp">
 
-          mkdir -p "$LAYOUT_DIR"
+              <ImageView
+                  android:id="@+id/ImageViewLogo"
+                  android:layout_width="260dp"
+                  android:layout_height="260dp"
+                  android:layout_marginBottom="28dp"
+                  android:src="@drawable/sonic_kiosk_logo"
+                  android:scaleType="fitCenter"
+                  android:contentDescription="Sonic Boll" />
 
-          cat > "$LAYOUT_DIR/content_installation_activity.xml" <<'EOF'
-<?xml version="1.0" encoding="utf-8"?>
+              <TextView
+                  android:id="@+id/TextViewTitle"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="8dp"
+                  android:text="Sonic Boll Mobile"
+                  android:textColor="#FFFFFF"
+                  android:textSize="22sp"
+                  android:textStyle="bold" />
 
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+              <TextView
+                  android:id="@+id/TextView"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="10dp"
+                  android:text="Installing Sonic Boll..."
+                  android:textColor="#B3B3B3"
+                  android:textSize="14sp"
+                  android:gravity="center" />
 
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
+              <ProgressBar
+                  android:id="@+id/CircularProgressIndicator"
+                  style="?android:attr/progressBarStyleHorizontal"
+                  android:layout_width="260dp"
+                  android:layout_height="12dp"
+                  android:max="100"
+                  android:progress="0"
+                  android:progressBackgroundTint="#333333"
+                  android:progressTint="#0088FF" />
 
-    android:orientation="vertical"
-    android:gravity="center"
+              <TextView
+                  android:id="@+id/TVProgress"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_marginTop="8dp"
+                  android:text="0%"
+                  android:textColor="#FFFFFF"
+                  android:textSize="13sp" />
 
-    android:background="#121212"
+              <LinearLayout
+                  android:id="@+id/LLBottomBar"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:visibility="gone"
+                  android:orientation="horizontal">
 
-    android:padding="24dp">
+                  <Button
+                      android:id="@+id/BTCancel"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="Continue" />
 
+              </LinearLayout>
 
-    <!-- SONIC BOLL LOGO -->
-
-    <ImageView
-
-        android:id="@+id/ImageViewLogo"
-
-        android:layout_width="260dp"
-        android:layout_height="260dp"
-
-        android:layout_marginBottom="28dp"
-
-        android:src="@drawable/sonic_kiosk_logo"
-
-        android:scaleType="fitCenter"
-
-        android:contentDescription="Sonic Boll"/>
-
-
-    <!-- TITLE -->
-
-    <TextView
-
-        android:id="@+id/TextViewTitle"
-
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-
-        android:layout_marginBottom="8dp"
-
-        android:text="Sonic Boll Mobile"
-
-        android:textColor="#FFFFFF"
-
-        android:textSize="22sp"
-
-        android:textStyle="bold"/>
-
-
-    <!-- INSTALLATION STATUS -->
-
-    <TextView
-
-        android:id="@+id/TextViewStatus"
-
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-
-        android:layout_marginBottom="24dp"
-
-        android:text="Installing Sonic Boll..."
-
-        android:textColor="#B3B3B3"
-
-        android:textSize="14sp"
-
-        android:gravity="center"/>
-
-
-    <!-- PROGRESS BAR -->
-
-    <ProgressBar
-
-        android:id="@+id/ProgressBar"
-
-        style="?android:attr/progressBarStyleHorizontal"
-
-        android:layout_width="260dp"
-        android:layout_height="12dp"
-
-        android:max="100"
-
-        android:progress="0"
-
-        android:progressBackgroundTint="#333333"
-
-        android:progressTint="#0088FF"/>
-
-
-</LinearLayout>
-EOF
-
-          echo "Sonic Boll installation screen installed."
+          </LinearLayout>
+          EOF
 
 
       # ============================================================
-      # DO NOT MODIFY INSTALLATION CODE
-      # ============================================================
-      #
-      # We intentionally do NOT create GameExtractor.java.
-      #
-      # We intentionally do NOT modify MainActivity.java.
-      #
-      # This keeps the Winlator installation engine untouched.
+      # REPLACE DOWNLOAD PROGRESS DIALOG
       # ============================================================
 
-
-      # ============================================================
-      # KEEP ZIP UNCOMPRESSED
-      # ============================================================
-
-      - name: Configure Game ZIP Asset
-        shell: bash
+      - name: Create Sonic Boll Progress Dialog
         run: |
+          cat > winlator-source/app/app/src/main/java/com/winlator/core/DownloadProgressDialog.java <<'EOF'
+          package com.winlator;
 
-          BUILD_FILE="winlator-source/app/app/build.gradle"
+          import android.app.Activity;
+          import android.app.Dialog;
+          import android.graphics.Color;
+          import android.graphics.drawable.ColorDrawable;
+          import android.view.View;
+          import android.view.Window;
+          import android.view.WindowManager;
+          import android.widget.ProgressBar;
+          import android.widget.TextView;
 
-          python3 - <<'PY'
+          public class DownloadProgressDialog {
 
-          from pathlib import Path
+              private final Activity activity;
+              private Dialog dialog;
 
-          path = Path(
-              "winlator-source/app/app/build.gradle"
-          )
-
-          text = path.read_text()
-
-          if 'noCompress "zip"' not in text:
-
-              marker = "android {"
-
-              if marker not in text:
-                  raise SystemExit(
-                      "Could not find android block."
-                  )
-
-              text = text.replace(
-                  marker,
-                  '''android {
-
-              aaptOptions {
-                  noCompress "zip"
+              public DownloadProgressDialog(Activity activity) {
+                  this.activity = activity;
               }
-          ''',
-                  1
-              )
 
-              path.write_text(text)
+              private void create() {
+                  if (dialog != null) return;
 
-          print("ZIP compression disabled.")
+                  dialog = new Dialog(
+                      activity,
+                      android.R.style.Theme_Translucent_NoTitleBar_Fullscreen
+                  );
 
+                  dialog.requestWindowFeature(
+                      Window.FEATURE_NO_TITLE
+                  );
+
+                  dialog.setCancelable(false);
+                  dialog.setCanceledOnTouchOutside(false);
+
+                  dialog.setContentView(
+                      R.layout.download_progress_dialog
+                  );
+
+                  Window window = dialog.getWindow();
+
+                  if (window != null) {
+                      window.clearFlags(
+                          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                      );
+
+                      window.clearFlags(
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                      );
+
+                      window.setLayout(
+                          WindowManager.LayoutParams.MATCH_PARENT,
+                          WindowManager.LayoutParams.MATCH_PARENT
+                      );
+
+                      window.setBackgroundDrawable(
+                          new ColorDrawable(Color.TRANSPARENT)
+                      );
+                  }
+              }
+
+              public void show() {
+                  show(0);
+              }
+
+              public void show(int textResId) {
+                  if (isShowing()) return;
+
+                  close();
+
+                  if (dialog == null) {
+                      create();
+                  }
+
+                  if (textResId > 0) {
+                      TextView text =
+                          dialog.findViewById(R.id.TextView);
+
+                      if (text != null) {
+                          text.setText(textResId);
+                      }
+                  }
+
+                  setProgress(0);
+
+                  View bottom =
+                      dialog.findViewById(R.id.LLBottomBar);
+
+                  if (bottom != null) {
+                      bottom.setVisibility(View.GONE);
+                  }
+
+                  dialog.show();
+              }
+
+              public void setProgress(int progress) {
+                  if (dialog == null) return;
+
+                  if (progress < 0) progress = 0;
+                  if (progress > 100) progress = 100;
+
+                  ProgressBar bar =
+                      dialog.findViewById(
+                          R.id.CircularProgressIndicator
+                      );
+
+                  if (bar != null) {
+                      bar.setProgress(progress);
+                  }
+
+                  TextView percentage =
+                      dialog.findViewById(R.id.TVProgress);
+
+                  if (percentage != null) {
+                      percentage.setText(
+                          progress + "%"
+                      );
+                  }
+              }
+
+              public void close() {
+                  try {
+                      if (dialog != null) {
+                          dialog.dismiss();
+                      }
+                  }
+                  catch (Exception ignored) {
+                  }
+              }
+
+              public void closeOnUiThread() {
+                  activity.runOnUiThread(
+                      this::close
+                  );
+              }
+
+              public boolean isShowing() {
+                  return dialog != null &&
+                         dialog.isShowing();
+              }
+          }
+          EOF
+
+
+      # ============================================================
+      # CREATE SONIC BOLL INSTALLER
+      # ============================================================
+
+      - name: Create Sonic Boll First Launch Installer
+        run: |
+          cat > winlator-source/app/app/src/main/java/com/winlator/SonicBollInstaller.java <<'EOF'
+          package com.winlator;
+
+          import android.content.Intent;
+          import android.os.Handler;
+          import android.os.Looper;
+
+          import com.winlator.container.Container;
+          import com.winlator.container.ContainerManager;
+          import com.winlator.xenvironment.RootFS;
+
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.InputStream;
+
+          import java.util.zip.ZipEntry;
+          import java.util.zip.ZipInputStream;
+
+          import org.json.JSONObject;
+
+          public class SonicBollInstaller {
+
+              private static final String GAME_DIR =
+                  "Program Files/SonicBoll";
+
+              private static final String MARKER =
+                  ".sonic_boll_installed";
+
+              private static final String SHORTCUT =
+                  "Sonic Boll Deluxe.desktop";
+
+              private static boolean running = false;
+
+
+              public static void installIfNeeded(
+                  MainActivity activity
+              ) {
+
+                  if (running) {
+                      return;
+                  }
+
+                  RootFS rootFS =
+                      RootFS.find(activity);
+
+                  if (!rootFS.isValid()) {
+                      return;
+                  }
+
+                  File complete =
+                      new File(
+                          activity.getFilesDir(),
+                          MARKER
+                      );
+
+                  if (complete.exists()) {
+                      return;
+                  }
+
+                  running = true;
+
+                  new Thread(() ->
+                      performInstall(activity)
+                  ).start();
+              }
+
+
+              private static void performInstall(
+                  MainActivity activity
+              ) {
+
+                  try {
+
+                      ContainerManager manager =
+                          new ContainerManager(activity);
+
+
+                      /*
+                       * Create the Winlator container.
+                       */
+
+                      JSONObject data =
+                          new JSONObject();
+
+                      data.put(
+                          "name",
+                          "Sonic Boll"
+                      );
+
+                      data.put(
+                          "screenSize",
+                          Container.DEFAULT_SCREEN_SIZE
+                      );
+
+                      data.put(
+                          "envVars",
+                          Container.DEFAULT_ENV_VARS
+                      );
+
+                      data.put(
+                          "graphicsDriver",
+                          Container.DEFAULT_GRAPHICS_DRIVER
+                      );
+
+                      data.put(
+                          "dxwrapper",
+                          Container.DEFAULT_DXWRAPPER
+                      );
+
+                      data.put(
+                          "audioDriver",
+                          Container.DEFAULT_AUDIO_DRIVER
+                      );
+
+                      data.put(
+                          "wincomponents",
+                          Container.DEFAULT_WINCOMPONENTS
+                      );
+
+                      data.put(
+                          "drives",
+                          Container.DEFAULT_DRIVES
+                      );
+
+                      data.put(
+                          "startupSelection",
+                          Container.STARTUP_SELECTION_ESSENTIAL
+                      );
+
+                      data.put(
+                          "box64Preset",
+                          "INTERMEDIATE"
+                      );
+
+                      data.put(
+                          "desktopTheme",
+                          "WIN10"
+                      );
+
+                      data.put(
+                          "extraData",
+                          new JSONObject()
+                      );
+
+
+                      final Container[] result =
+                          new Container[1];
+
+                      final Object lock =
+                          new Object();
+
+
+                      manager.createContainerAsync(
+                          data,
+                          container -> {
+
+                              synchronized (lock) {
+
+                                  result[0] =
+                                      container;
+
+                                  lock.notifyAll();
+                              }
+                          }
+                      );
+
+
+                      synchronized (lock) {
+
+                          while (result[0] == null) {
+                              lock.wait();
+                          }
+                      }
+
+
+                      Container container =
+                          result[0];
+
+                      if (container == null) {
+                          throw new Exception(
+                              "Unable to create container"
+                          );
+                      }
+
+
+                      /*
+                       * Put Sonic Boll inside:
+                       *
+                       * .wine/drive_c/Program Files/SonicBoll
+                       */
+
+                      File gameDirectory =
+                          new File(
+                              container.getRootDir(),
+                              ".wine/drive_c/" + GAME_DIR
+                          );
+
+                      if (!gameDirectory.exists() &&
+                          !gameDirectory.mkdirs()) {
+
+                          throw new Exception(
+                              "Unable to create game directory"
+                          );
+                      }
+
+
+                      extractGame(
+                          activity,
+                          gameDirectory
+                      );
+
+
+                      /*
+                       * Create a real Winlator desktop shortcut.
+                       */
+
+                      File desktopDirectory =
+                          new File(
+                              container.getUserDir(),
+                              "Desktop"
+                          );
+
+                      if (!desktopDirectory.exists()) {
+                          desktopDirectory.mkdirs();
+                      }
+
+
+                      File shortcut =
+                          new File(
+                              desktopDirectory,
+                              SHORTCUT
+                          );
+
+
+                      String desktop =
+                          "[Desktop Entry]\\n" +
+                          "Name=Sonic Boll Deluxe\\n" +
+                          "Exec=wine C:\\\\Program Files\\\\SonicBoll\\\\Boll Deluxe.exe\\n" +
+                          "Type=Application\\n" +
+                          "StartupWMClass=Boll Deluxe\\n";
+
+
+                      writeText(
+                          shortcut,
+                          desktop
+                      );
+
+
+                      /*
+                       * Mark installation complete.
+                       */
+
+                      File complete =
+                          new File(
+                              activity.getFilesDir(),
+                              MARKER
+                          );
+
+                      complete.createNewFile();
+
+
+                      /*
+                       * Launch the actual Winlator shortcut.
+                       */
+
+                      Intent intent =
+                          new Intent(
+                              activity,
+                              XServerDisplayActivity.class
+                          );
+
+                      intent.putExtra(
+                          "container_id",
+                          container.id
+                      );
+
+                      intent.putExtra(
+                          "shortcut_path",
+                          shortcut.getAbsolutePath()
+                      );
+
+
+                      new Handler(
+                          Looper.getMainLooper()
+                      ).post(() -> {
+
+                          activity.startActivity(
+                              intent
+                          );
+
+                          running = false;
+                      });
+
+                  }
+                  catch (Exception e) {
+
+                      e.printStackTrace();
+
+                      running = false;
+
+                      new Handler(
+                          Looper.getMainLooper()
+                      ).post(() ->
+                          android.widget.Toast.makeText(
+                              activity,
+                              "Sonic Boll installation failed: " +
+                              e.getMessage(),
+                              android.widget.Toast.LENGTH_LONG
+                          ).show()
+                      );
+                  }
+              }
+
+
+              private static void extractGame(
+                  MainActivity activity,
+                  File destination
+              ) throws Exception {
+
+                  InputStream input =
+                      activity.getAssets().open(
+                          "game.zip"
+                      );
+
+                  ZipInputStream zip =
+                      new ZipInputStream(input);
+
+
+                  byte[] buffer =
+                      new byte[8192];
+
+                  ZipEntry entry;
+
+
+                  while ((entry =
+                      zip.getNextEntry()) != null) {
+
+                      String name =
+                          entry.getName();
+
+
+                      File output =
+                          new File(
+                              destination,
+                              name
+                          );
+
+
+                      /*
+                       * Protect against ../ ZIP entries.
+                       */
+
+                      String root =
+                          destination
+                              .getCanonicalPath();
+
+                      String target =
+                          output
+                              .getCanonicalPath();
+
+                      if (!target.startsWith(
+                              root + File.separator
+                          ) &&
+                          !target.equals(root)) {
+
+                          zip.closeEntry();
+                          continue;
+                      }
+
+
+                      if (entry.isDirectory()) {
+
+                          output.mkdirs();
+
+                      }
+                      else {
+
+                          File parent =
+                              output.getParentFile();
+
+                          if (parent != null) {
+                              parent.mkdirs();
+                          }
+
+
+                          FileOutputStream outputStream =
+                              new FileOutputStream(
+                                  output
+                              );
+
+
+                          int count;
+
+                          while ((count =
+                              zip.read(buffer)) != -1) {
+
+                              outputStream.write(
+                                  buffer,
+                                  0,
+                                  count
+                              );
+                          }
+
+
+                          outputStream.close();
+                      }
+
+
+                      zip.closeEntry();
+                  }
+
+
+                  zip.close();
+                  input.close();
+              }
+
+
+              private static void writeText(
+                  File file,
+                  String text
+              ) throws Exception {
+
+                  File parent =
+                      file.getParentFile();
+
+                  if (parent != null) {
+                      parent.mkdirs();
+                  }
+
+                  FileOutputStream output =
+                      new FileOutputStream(file);
+
+                  output.write(
+                      text.getBytes("UTF-8")
+                  );
+
+                  output.close();
+              }
+          }
+          EOF
+
+
+      # ============================================================
+      # PATCH ROOTFS INSTALLER
+      # ============================================================
+
+      - name: Hook Sonic Boll Into First Launch
+        run: |
+          TARGET="winlator-source/app/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java"
+
+          python3 - "$TARGET" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          if "SonicBollInstaller.installIfNeeded(activity);" in text:
+              print("Sonic Boll hook already exists.")
+              sys.exit(0)
+
+          old = """            if (success) {
+                rootFS.createRFSVersionFile(LATEST_VERSION);
+                resetContainerRFSVersions(activity);
+            }
+            else AppUtils.showToast(activity, R.string.unable_to_install_system_files);"""
+
+          new = """            if (success) {
+                rootFS.createRFSVersionFile(LATEST_VERSION);
+                resetContainerRFSVersions(activity);
+                SonicBollInstaller.installIfNeeded(activity);
+            }
+            else AppUtils.showToast(activity, R.string.unable_to_install_system_files);"""
+
+          if old not in text:
+              print("ERROR: RootFS success block was not found.")
+              sys.exit(1)
+
+          text = text.replace(old, new, 1)
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(text)
+
+          print("First-launch Sonic Boll hook installed.")
           PY
 
 
       # ============================================================
-      # GRADLE MEMORY
+      # PATCH MAIN ACTIVITY
+      #
+      # This handles the case where Winlator's root filesystem is
+      # already installed but Sonic Boll itself has not been installed.
       # ============================================================
 
-      - name: Configure Gradle Memory
+      - name: Hook MainActivity
         run: |
+          TARGET="winlator-source/app/app/src/main/java/com/winlator/MainActivity.java"
 
+          python3 - "$TARGET" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          if "SonicBollInstaller.installIfNeeded(this);" in text:
+              print("MainActivity hook already exists.")
+              sys.exit(0)
+
+          old = "if (!requestAppPermissions()) RootFSInstaller.installIfNeeded(this);"
+
+          new = """if (!requestAppPermissions()) {
+              RootFSInstaller.installIfNeeded(this);
+              SonicBollInstaller.installIfNeeded(this);
+          }"""
+
+          if old not in text:
+              print("ERROR: MainActivity installation call was not found.")
+              sys.exit(1)
+
+          text = text.replace(old, new, 1)
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(text)
+
+          print("MainActivity hook installed.")
+          PY
+
+
+      # ============================================================
+      # DO NOT COMPRESS GAME ZIP
+      # ============================================================
+
+      - name: Configure ZIP Asset
+        run: |
+          BUILD_FILE="winlator-source/app/app/build.gradle"
+
+          if ! grep -q 'noCompress "zip"' "$BUILD_FILE"; then
+            sed -i '/android {/a\
+              aaptOptions {\
+                  noCompress "zip"\
+              }' "$BUILD_FILE"
+          fi
+
+
+      # ============================================================
+      # GRADLE
+      # ============================================================
+
+      - name: Configure Gradle
+        run: |
           mkdir -p "$HOME/.gradle"
 
           cat > "$HOME/.gradle/gradle.properties" <<'EOF'
-org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
-org.gradle.daemon=false
-org.gradle.parallel=false
-org.gradle.workers.max=2
-EOF
-
-
-      # ============================================================
-      # PREPARE GRADLE
-      # ============================================================
-
-      - name: Prepare Gradle
-        working-directory: winlator-source/app
-        run: |
-
-          chmod +x gradlew
-
-          ./gradlew --version
+          org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=2
+          EOF
 
 
       # ============================================================
@@ -364,16 +917,10 @@ EOF
 
       - name: Build APK
         working-directory: winlator-source/app
-
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-
-          GRADLE_OPTS: >-
-            -Xmx6g
-            -XX:MaxMetaspaceSize=1g
-            -Dfile.encoding=UTF-8
-
         run: |
+          chmod +x gradlew
 
           ./gradlew assembleDebug \
             --no-daemon \
@@ -383,18 +930,15 @@ EOF
 
 
       # ============================================================
-      # VERIFY APK
+      # VERIFY
       # ============================================================
 
       - name: Verify APK
-        shell: bash
         run: |
-
           APK="winlator-source/app/app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
-
-            echo "ERROR: APK was not generated."
+            echo "ERROR: APK was not created."
 
             find winlator-source/app \
               -type f \
@@ -402,22 +946,18 @@ EOF
               -print
 
             exit 1
-
           fi
-
-          echo "APK successfully built:"
 
           ls -lh "$APK"
 
 
       # ============================================================
-      # UPLOAD APK
+      # UPLOAD
       # ============================================================
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
-
         with:
-          name: Sonic-Boll-Install-Screen-APK
+          name: Sonic-Boll-Android-Port
           path: winlator-source/app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
