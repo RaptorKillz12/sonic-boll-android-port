@@ -43,7 +43,6 @@ jobs:
 
       - name: Fetch Large Game Zip and Inject Graphic Resources
         run: |
-          # Double nesting fix: Target 'winlator-source/app/app/' path structure
           mkdir -p winlator-source/app/app/src/main/assets/
           
           # Download game package safely
@@ -55,7 +54,7 @@ jobs:
             exit 1
           fi
           
-          # Inject custom setup logo screen graphic into drawables (Double nested app patch)
+          # Inject custom setup logo screen graphic into drawables
           mkdir -p winlator-source/app/app/src/main/res/drawable-nodpi/
           
           if [ -f "my-game-repo/sonic_kiosk_logo.png" ]; then
@@ -74,17 +73,11 @@ jobs:
 
       - name: Force App Name & Re-brand UI Labels
         run: |
-          SED_TARGET="winlator-source/app/app/src/main/res/values/strings.xml"
-          if [ -f "$SED_TARGET" ]; then
-            sed -i 's/name="app_name">Winlator/name="app_name">Sonic Boll Port/g' $SED_TARGET
-          else
-            echo "Alternative string layout path checked. Scanning fallback layout strings..."
-            find winlator-source/ -name "strings.xml" -exec sed -i 's/name="app_name">Winlator/name="app_name">Sonic Boll Port/g' {} +
-          fi
+          # Use vertical bars as delimiters to completely eliminate path parsing errors
+          find winlator-source/ -name "strings.xml" -exec sed -i 's|name="app_name">Winlator|name="app_name">Sonic Boll Port|g' {} +
 
       - name: Inject Blue Kiosk Layout Interface Overwrite
         run: |
-          # Overwrites the layout file inside the double-nested directory tree
           cat << 'EOF' > winlator-source/app/app/src/main/res/layout/content_installation_activity.xml
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://android.com"
@@ -137,9 +130,11 @@ jobs:
 
       - name: Inject Core Unzip Automation Engine into Source Code
         run: |
-          # Targeting ContentInstallationActivity.java inside double nested module directory
-          TARGET_MAIN_ACTIVITY="winlator-source/app/app/src/main/java/com/winlator/ContentInstallationActivity.java"
+          # Dynamically map the ContentInstallationActivity file location
+          FOUND_PATH=$(find winlator-source/ -name "ContentInstallationActivity.java" | head -n 1)
+          echo "Injecting target code into found file path: $FOUND_PATH"
           
+          # Clean method injection string using escaped boundaries without string/delimiter collision
           UNZIP_METHOD_PAYLOAD="    private void extractGameZipToWineCDrive(File imageDir) { \n\
                   File targetCDrive = new File(imageDir, \"drive_c/Program Files/SonicBoll\"); \n\
                   if (!targetCDrive.exists()) targetCDrive.mkdirs(); \n\
@@ -161,16 +156,11 @@ jobs:
                   } catch (Exception e) { e.printStackTrace(); } \n\
               }"
 
-          # Using dynamic fallback search just in case upstream structure changes during initialization
-          if [ -f "$TARGET_MAIN_ACTIVITY" ]; then
-            sed -i -z "s/\(}\s*}\s*\)$/\n${UNZIP_METHOD_PAYLOAD}\n\1/" $TARGET_MAIN_ACTIVITY
-            sed -i 's/preinstallImageOptions();/extractGameZipToWineCDrive(imageDir); preinstallImageOptions();/g' $TARGET_MAIN_ACTIVITY
-          else
-            echo "Dynamic path mapping executed..."
-            FOUND_PATH=$(find winlator-source/ -name "ContentInstallationActivity.java" | head -n 1)
-            sed -i -z "s/\(}\s*}\s*\)$/\n${UNZIP_METHOD_PAYLOAD}\n\1/" $FOUND_PATH
-            sed -i 's/preinstallImageOptions();/extractGameZipToWineCDrive(imageDir); preinstallImageOptions();/g' $FOUND_PATH
-          fi
+          # Append extraction logic before class boundary ends using vertical bar delimiters
+          sed -i -z "s|\(}\s*}\s*\)$|\n${UNZIP_METHOD_PAYLOAD}\n\1|" "$FOUND_PATH"
+          
+          # Safely hook the initialization step
+          sed -i "s|preinstallImageOptions();|extractGameZipToWineCDrive(imageDir); preinstallImageOptions();|g" "$FOUND_PATH"
 
       # ==============================================================
       # COMPILATION PHASES
