@@ -23,7 +23,7 @@ jobs:
 
       - name: Clone Official Winlator Upstream Source
         run: |
-          git clone --recursive https://github.com winlator-source
+          git clone --recursive https://github.com/brunodev85/winlator.git winlator-source
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
