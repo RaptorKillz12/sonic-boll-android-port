@@ -1,0 +1,423 @@
+name: Sonic Boll Install Screen
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  GAME_ZIP_URL: "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=t1pusozp&dl=1"
+
+jobs:
+
+  build:
+    name: Build Sonic Boll Winlator APK
+    runs-on: ubuntu-22.04
+
+    steps:
+
+      # ============================================================
+      # CHECK OUT YOUR REPOSITORY
+      # ============================================================
+
+      - name: Checkout Sonic Boll Assets
+        uses: actions/checkout@v5
+        with:
+          path: my-game-repo
+
+
+      # ============================================================
+      # DOWNLOAD WINLATOR
+      # ============================================================
+
+      - name: Clone Winlator
+        run: |
+          git clone --recursive \
+            https://github.com/brunodev85/winlator.git \
+            winlator-source
+
+          cd winlator-source
+
+          git submodule update --init --recursive
+
+          echo "Winlator revision:"
+          git rev-parse HEAD
+
+
+      # ============================================================
+      # VERIFY ANDROID PROJECT
+      # ============================================================
+
+      - name: Verify Winlator
+        run: |
+          test -f winlator-source/app/gradlew
+          test -f winlator-source/app/app/build.gradle
+
+          echo "Winlator Android project found."
+
+
+      # ============================================================
+      # JAVA
+      # ============================================================
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+
+      # ============================================================
+      # ANDROID SDK
+      # ============================================================
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+
+      - name: Install Android Components
+        run: |
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;25.2.9519653"
+
+          yes | sdkmanager --licenses || true
+
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" \
+            >> "$GITHUB_ENV"
+
+
+      # ============================================================
+      # DOWNLOAD GAME ZIP
+      # ============================================================
+
+      - name: Download Sonic Boll Game ZIP
+        shell: bash
+        run: |
+
+          mkdir -p \
+            winlator-source/app/app/src/main/assets
+
+          echo "Downloading game.zip..."
+
+          curl \
+            -L \
+            --fail \
+            --retry 5 \
+            --retry-delay 3 \
+            -A "Mozilla/5.0" \
+            "${GAME_ZIP_URL}" \
+            -o winlator-source/app/app/src/main/assets/game.zip
+
+          test -s \
+            winlator-source/app/app/src/main/assets/game.zip
+
+          echo "Game ZIP downloaded."
+
+          ls -lh \
+            winlator-source/app/app/src/main/assets/game.zip
+
+
+      # ============================================================
+      # INSTALL SONIC BOLL INSTALLATION-SCREEN LOGO
+      # ============================================================
+
+      - name: Install Sonic Boll Logo
+        shell: bash
+        run: |
+
+          mkdir -p \
+            winlator-source/app/app/src/main/res/drawable-nodpi
+
+          if [ -f "my-game-repo/sonic_kiosk_logo.png" ]; then
+
+            cp \
+              my-game-repo/sonic_kiosk_logo.png \
+              winlator-source/app/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
+
+            echo "Custom Sonic Boll logo installed."
+
+          else
+
+            echo "ERROR: sonic_kiosk_logo.png was not found."
+
+            echo "Put sonic_kiosk_logo.png in the root of your repository."
+
+            exit 1
+
+          fi
+
+
+      # ============================================================
+      # REPLACE INSTALLATION SCREEN LAYOUT
+      #
+      # IMPORTANT:
+      # This changes ONLY the visual installation layout.
+      # It does not modify MainActivity.java.
+      # ============================================================
+
+      - name: Replace Installation Screen
+        shell: bash
+        run: |
+
+          LAYOUT_DIR="winlator-source/app/app/src/main/res/layout"
+
+          mkdir -p "$LAYOUT_DIR"
+
+          cat > "$LAYOUT_DIR/content_installation_activity.xml" <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+
+    android:orientation="vertical"
+    android:gravity="center"
+
+    android:background="#121212"
+
+    android:padding="24dp">
+
+
+    <!-- SONIC BOLL LOGO -->
+
+    <ImageView
+
+        android:id="@+id/ImageViewLogo"
+
+        android:layout_width="260dp"
+        android:layout_height="260dp"
+
+        android:layout_marginBottom="28dp"
+
+        android:src="@drawable/sonic_kiosk_logo"
+
+        android:scaleType="fitCenter"
+
+        android:contentDescription="Sonic Boll"/>
+
+
+    <!-- TITLE -->
+
+    <TextView
+
+        android:id="@+id/TextViewTitle"
+
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+
+        android:layout_marginBottom="8dp"
+
+        android:text="Sonic Boll Mobile"
+
+        android:textColor="#FFFFFF"
+
+        android:textSize="22sp"
+
+        android:textStyle="bold"/>
+
+
+    <!-- INSTALLATION STATUS -->
+
+    <TextView
+
+        android:id="@+id/TextViewStatus"
+
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+
+        android:layout_marginBottom="24dp"
+
+        android:text="Installing Sonic Boll..."
+
+        android:textColor="#B3B3B3"
+
+        android:textSize="14sp"
+
+        android:gravity="center"/>
+
+
+    <!-- PROGRESS BAR -->
+
+    <ProgressBar
+
+        android:id="@+id/ProgressBar"
+
+        style="?android:attr/progressBarStyleHorizontal"
+
+        android:layout_width="260dp"
+        android:layout_height="12dp"
+
+        android:max="100"
+
+        android:progress="0"
+
+        android:progressBackgroundTint="#333333"
+
+        android:progressTint="#0088FF"/>
+
+
+</LinearLayout>
+EOF
+
+          echo "Sonic Boll installation screen installed."
+
+
+      # ============================================================
+      # DO NOT MODIFY INSTALLATION CODE
+      # ============================================================
+      #
+      # We intentionally do NOT create GameExtractor.java.
+      #
+      # We intentionally do NOT modify MainActivity.java.
+      #
+      # This keeps the Winlator installation engine untouched.
+      # ============================================================
+
+
+      # ============================================================
+      # KEEP ZIP UNCOMPRESSED
+      # ============================================================
+
+      - name: Configure Game ZIP Asset
+        shell: bash
+        run: |
+
+          BUILD_FILE="winlator-source/app/app/build.gradle"
+
+          python3 - <<'PY'
+
+          from pathlib import Path
+
+          path = Path(
+              "winlator-source/app/app/build.gradle"
+          )
+
+          text = path.read_text()
+
+          if 'noCompress "zip"' not in text:
+
+              marker = "android {"
+
+              if marker not in text:
+                  raise SystemExit(
+                      "Could not find android block."
+                  )
+
+              text = text.replace(
+                  marker,
+                  '''android {
+
+              aaptOptions {
+                  noCompress "zip"
+              }
+          ''',
+                  1
+              )
+
+              path.write_text(text)
+
+          print("ZIP compression disabled.")
+
+          PY
+
+
+      # ============================================================
+      # GRADLE MEMORY
+      # ============================================================
+
+      - name: Configure Gradle Memory
+        run: |
+
+          mkdir -p "$HOME/.gradle"
+
+          cat > "$HOME/.gradle/gradle.properties" <<'EOF'
+org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+org.gradle.daemon=false
+org.gradle.parallel=false
+org.gradle.workers.max=2
+EOF
+
+
+      # ============================================================
+      # PREPARE GRADLE
+      # ============================================================
+
+      - name: Prepare Gradle
+        working-directory: winlator-source/app
+        run: |
+
+          chmod +x gradlew
+
+          ./gradlew --version
+
+
+      # ============================================================
+      # BUILD
+      # ============================================================
+
+      - name: Build APK
+        working-directory: winlator-source/app
+
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+
+          GRADLE_OPTS: >-
+            -Xmx6g
+            -XX:MaxMetaspaceSize=1g
+            -Dfile.encoding=UTF-8
+
+        run: |
+
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --no-parallel \
+            --max-workers=2 \
+            --stacktrace
+
+
+      # ============================================================
+      # VERIFY APK
+      # ============================================================
+
+      - name: Verify APK
+        shell: bash
+        run: |
+
+          APK="winlator-source/app/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+
+            echo "ERROR: APK was not generated."
+
+            find winlator-source/app \
+              -type f \
+              -name "*.apk" \
+              -print
+
+            exit 1
+
+          fi
+
+          echo "APK successfully built:"
+
+          ls -lh "$APK"
+
+
+      # ============================================================
+      # UPLOAD APK
+      # ============================================================
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: Sonic-Boll-Install-Screen-APK
+          path: winlator-source/app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
