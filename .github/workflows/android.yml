@@ -60,172 +60,85 @@ jobs:
         run: |
           mkdir -p $APP_DIR/src/main/assets/
           mkdir -p $APP_DIR/src/main/res/layout/
-          mkdir -p $APP_DIR/src/main/java/com/winlator/
 
       - name: Download Game Zip from Dropbox
         run: |
           curl -L -o $APP_DIR/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
 
-      - name: Override Splash Layout XML (Image + Text + Space + Text + ProgressBar)
+      - name: Patch MainActivity.java directly to Auto-Launch
         run: |
-          cat << 'EOF' > ${{ env.APP_DIR }}/src/main/res/layout/splash_activity.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              android:orientation="vertical"
-              android:gravity="center"
-              android:background="#000000"
-              android:padding="24dp">
+          python3 -c '
+          import os, glob
 
-              <!-- 1. Image -->
-              <ImageView
-                  android:id="@+id/splash_image"
-                  android:layout_width="220dp"
-                  android:layout_height="220dp"
-                  android:src="@mipmap/ic_launcher"
-                  android:scaleType="fitCenter" />
+          main_activity_paths = glob.glob("winlator-src/**/MainActivity.java", recursive=True)
+          if main_activity_paths:
+              path = main_activity_paths[0]
+              print("Patching MainActivity at:", path)
+              with open(path, "r") as f:
+                  content = f.read()
 
-              <!-- 2. Text Underneath -->
-              <TextView
-                  android:id="@+id/splash_title"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:layout_marginTop="16dp"
-                  android:text="Sonic Boll Deluxe"
-                  android:textColor="#FFFFFF"
-                  android:textSize="22sp"
-                  android:textStyle="bold" />
-
-              <!-- 3. Space -->
-              <Space
-                  android:layout_width="match_parent"
-                  android:layout_height="32dp" />
-
-              <!-- 4. Secondary Text -->
-              <TextView
-                  android:id="@+id/splash_status"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:text="Extracting game files, please wait..."
-                  android:textColor="#AAAAAA"
-                  android:textSize="14sp" />
-
-              <!-- 5. ProgressBar -->
-              <ProgressBar
-                  android:id="@+id/splash_progressbar"
-                  style="?android:attr/progressBarStyleHorizontal"
-                  android:layout_width="240dp"
-                  android:layout_height="wrap_content"
-                  android:layout_marginTop="12dp"
-                  android:indeterminate="true" />
-
-          </LinearLayout>
-          EOF
-
-      - name: Inject Dedicated Splash Launcher Activity
-        run: |
-          cat << 'EOF' > ${{ env.APP_DIR }}/src/main/java/com/winlator/SplashActivity.java
-          package com.winlator;
-
-          import android.content.Intent;
-          import android.os.Bundle;
-          import android.os.Handler;
-          import android.os.Looper;
-          import androidx.appcompat.app.AppCompatActivity;
-          import com.winlator.container.Container;
-          import com.winlator.container.ContainerManager;
-          import java.io.File;
-          import java.io.FileOutputStream;
-          import java.io.InputStream;
-          import java.util.zip.ZipEntry;
-          import java.util.zip.ZipInputStream;
-
-          public class SplashActivity extends AppCompatActivity {
-
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  setContentView(R.layout.splash_activity);
-
+              # Inject custom zip extraction & container launcher code
+              custom_launch_code = """
+              private void checkAndAutoLaunchGame() {
                   new Thread(() -> {
-                      extractGameZipIfNeeded();
-                      new Handler(Looper.getMainLooper()).post(this::launchContainer);
-                  }).start();
-              }
-
-              private void extractGameZipIfNeeded() {
-                  File targetDir = new File(getFilesDir(), "image/drive_c/SonicBoll");
-                  if (!targetDir.exists()) {
-                      targetDir.mkdirs();
-                      try (InputStream is = getAssets().open("game.zip");
-                           ZipInputStream zis = new ZipInputStream(is)) {
-                          ZipEntry entry;
-                          byte[] buffer = new byte[8192];
-                          while ((entry = zis.getNextEntry()) != null) {
-                              File file = new File(targetDir, entry.getName());
-                              if (entry.isDirectory()) {
-                                  file.mkdirs();
-                              } else {
-                                  file.getParentFile().mkdirs();
-                                  try (FileOutputStream fos = new FileOutputStream(file)) {
-                                      int count;
-                                      while ((count = zis.read(buffer)) != -1) {
-                                          fos.write(buffer, 0, count);
+                      try {
+                          File targetDir = new File(getFilesDir(), "image/drive_c/SonicBoll");
+                          if (!targetDir.exists()) {
+                              targetDir.mkdirs();
+                              try (java.io.InputStream is = getAssets().open("game.zip");
+                                   java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(is)) {
+                                  java.util.zip.ZipEntry entry;
+                                  byte[] buffer = new byte[8192];
+                                  while ((entry = zis.getNextEntry()) != null) {
+                                      File file = new File(targetDir, entry.getName());
+                                      if (entry.isDirectory()) {
+                                          file.mkdirs();
+                                      } else {
+                                          file.getParentFile().mkdirs();
+                                          try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                                              int count;
+                                              while ((count = zis.read(buffer)) != -1) {
+                                                  fos.write(buffer, 0, count);
+                                              }
+                                          }
                                       }
+                                      zis.closeEntry();
                                   }
                               }
-                              zis.closeEntry();
                           }
+                          runOnUiThread(() -> {
+                              try {
+                                  com.winlator.container.ContainerManager manager = new com.winlator.container.ContainerManager(this);
+                                  com.winlator.container.Container container = manager.getContainers().isEmpty() 
+                                      ? manager.createContainer(com.winlator.container.Container.DEFAULT_CONFIG) 
+                                      : manager.getContainers().get(0);
+
+                                  android.content.Intent intent = new android.content.Intent(this, com.winlator.XServerDisplayActivity.class);
+                                  intent.putExtra("container_id", container.id);
+                                  intent.putExtra("shortcut_path", "C:\\\\SonicBoll\\\\SonicBoll.exe");
+                                  startActivity(intent);
+                                  finish();
+                              } catch (Exception e) {
+                                  e.printStackTrace();
+                              }
+                          });
                       } catch (Exception e) {
                           e.printStackTrace();
                       }
-                  }
+                  }).start();
               }
-
-              private void launchContainer() {
-                  try {
-                      ContainerManager manager = new ContainerManager(this);
-                      Container container = manager.getContainers().isEmpty() 
-                          ? manager.createContainer(Container.DEFAULT_CONFIG) 
-                          : manager.getContainers().get(0);
-
-                      Intent intent = new Intent(this, XServerDisplayActivity.class);
-                      intent.putExtra("container_id", container.id);
-                      intent.putExtra("shortcut_path", "C:\\SonicBoll\\SonicBoll.exe");
-                      startActivity(intent);
-                      finish();
-                  } catch (Exception e) {
-                      e.printStackTrace();
-                  }
-              }
-          }
-          EOF
-
-      - name: Patch AndroidManifest Launcher Intent
-        run: |
-          python3 -c '
-          import os, re, glob
-          manifest_paths = glob.glob("winlator-src/**/AndroidManifest.xml", recursive=True)
-          if manifest_paths:
-              manifest_path = manifest_paths[0]
-              print("Patching manifest at:", manifest_path)
-              with open(manifest_path, "r") as f:
-                  content = f.read()
-
-              splash_entry = """
-              <activity android:name="com.winlator.SplashActivity" android:exported="true" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-                  <intent-filter>
-                      <action android:name="android.intent.action.MAIN" />
-                      <category android:name="android.intent.category.LAUNCHER" />
-                  </intent-filter>
-              </activity>
               """
+
+              # Inject method right before the closing brace of MainActivity
+              content = content[:content.rfind("}")] + custom_launch_code + "\n}"
               
-              content = re.sub(r"<category\s+android:name=\"android\.intent\.category\.LAUNCHER\"\s*/>", "", content)
-              content = content.replace("</application>", splash_entry + "\n</application>")
-              
-              with open(manifest_path, "w") as f:
+              # Hook checkAndAutoLaunchGame into standard startup flow
+              if "setupImageFs();" in content:
+                  content = content.replace("setupImageFs();", "setupImageFs(); checkAndAutoLaunchGame();")
+              elif "onCreate(" in content:
+                  content = content.replace("super.onCreate(savedInstanceState);", "super.onCreate(savedInstanceState);\n        checkAndAutoLaunchGame();")
+
+              with open(path, "w") as f:
                   f.write(content)
           '
 
