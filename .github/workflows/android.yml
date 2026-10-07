@@ -37,7 +37,7 @@ jobs:
           cache: 'gradle'
 
       - name: Setup Android NDK
-        uses: nswell/setup-android-ndk@v1
+        uses: nswell/setup-android-ndk@v2
         continue-on-error: true
         with:
           ndk-version: r25c
