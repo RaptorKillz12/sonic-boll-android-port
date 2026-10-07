@@ -7,7 +7,7 @@ on:
 
 # --- PASTE YOUR DROPBOX DIRECT LINK HERE ---
 env:
-  GAME_ZIP_URL: "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=14w6g4zw&dl=1" 
+  GAME_ZIP_URL: "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=t1pusozp&dl=1" 
 # --------------------------------------------
 
 jobs:
@@ -38,18 +38,17 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
 
       # ==============================================================
-      # REMOTE BYPASS: FETCH LARGE ZIP FROM DROPBOX
+      # REMOTE BYPASS: FETCH LARGE ZIP FROM DROPBOX & OVERWRITE ICONS
       # ==============================================================
 
       - name: Fetch Large Game Zip and Inject Graphic Resources
         run: |
           mkdir -p winlator-source/app/src/main/assets/
           
-          # Using curl with -L to follow redirects which is mandatory for Dropbox links
+          # Download game package safely
           echo "Downloading game archive from Dropbox cloud container..."
           curl -L "${{ env.GAME_ZIP_URL }}" -o winlator-source/app/src/main/assets/game.zip
           
-          # Safety check to see if the archive exists and is non-empty
           if [ ! -s "winlator-source/app/src/main/assets/game.zip" ]; then
             echo "Error: The download failed or returned an empty file. Make sure your Dropbox URL ends explicitly with dl=1"
             exit 1
@@ -57,8 +56,17 @@ jobs:
           
           # Inject custom setup logo screen graphic into drawables
           mkdir -p winlator-source/app/src/main/res/drawable-nodpi/
+          
           if [ -f "my-game-repo/sonic_kiosk_logo.png" ]; then
             cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/drawable-nodpi/sonic_kiosk_logo.png
+            
+            # --- FIXED SECTION: Force the icon folders to exist before copying ---
+            mkdir -p winlator-source/app/src/main/res/mipmap-mdpi/
+            mkdir -p winlator-source/app/src/main/res/mipmap-hdpi/
+            mkdir -p winlator-source/app/src/main/res/mipmap-xhdpi/
+            mkdir -p winlator-source/app/src/main/res/mipmap-xxhdpi/
+            
+            # Copy your custom image over to replace the stock launcher logos
             cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher.png
             cp my-game-repo/sonic_kiosk_logo.png winlator-source/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
           fi
