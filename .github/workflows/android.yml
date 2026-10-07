@@ -1,321 +1,144 @@
-name: Build Sonic Boll Deluxe Android
+name: Build Sonic Boll Winlator APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
       - master
-
-permissions:
-  contents: read
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    name: Clone Winlator, Inject Splash & Build APK
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Sonic Boll
+      - name: Checkout Port Repository
         uses: actions/checkout@v4
         with:
-          path: sonic-project
+          path: port-src
 
-      - name: Checkout Winlator
+      - name: Clone Winlator Source Repository
         uses: actions/checkout@v4
         with:
           repository: brunodev85/winlator
-          path: winlator-source
+          path: winlator-src
           submodules: recursive
-          fetch-depth: 1
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android NDK
+        uses: nswell/setup-android-ndk@v1
+        continue-on-error: true
+        with:
+          ndk-version: r25c
 
-      - name: Install Android SDK components
-        shell: bash
+      - name: Create Required Directories
         run: |
-          set -e
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653"
+          mkdir -p winlator-src/app/src/main/assets/
+          mkdir -p winlator-src/app/src/main/res/layout/
+          mkdir -p winlator-src/app/src/main/res/drawable/
 
-      - name: Find game.zip
-        shell: bash
+      - name: Download Game Zip from Dropbox
         run: |
-          set -e
+          curl -L -o winlator-src/app/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
 
-          GAME_ZIP="$(find "$GITHUB_WORKSPACE/sonic-project" -type f -name "game.zip" -print -quit)"
-
-          if [ -z "$GAME_ZIP" ]; then
-            echo "ERROR: game.zip was not found."
-            exit 1
-          fi
-
-          mkdir -p "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets"
-          cp "$GAME_ZIP" "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
-
-          echo "Found game.zip:"
-          ls -lh "$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
-
-      - name: Install Sonic Boll logo
-        shell: bash
+      - name: Generate Custom Startup Layout (Image + Text + Space + Text + ProgressBar)
         run: |
-          set -e
-
-          DRAWABLE="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/res/drawable-nodpi"
-          mkdir -p "$DRAWABLE"
-
-          LOGO="$(find "$GITHUB_WORKSPACE/sonic-project" -type f -name "sonic_kiosk_logo.png" -print -quit)"
-
-          if [ -z "$LOGO" ]; then
-            echo "ERROR: sonic_kiosk_logo.png was not found."
-            exit 1
-          fi
-
-          cp "$LOGO" "$DRAWABLE/sonic_kiosk_logo.png"
-
-      - name: Create Sonic Boll installation screen
-        shell: bash
-        run: |
-          set -e
-
-          LAYOUT="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/res/layout/download_progress_dialog.xml"
-
-          mkdir -p "$(dirname "$LAYOUT")"
-
-          cat > "$LAYOUT" <<'EOF'
+          cat << 'EOF' > winlator-src/app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout
-              xmlns:android="http://schemas.android.com/apk/res/android"
-              xmlns:app="http://schemas.android.com/apk/res-auto"
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
               android:layout_width="match_parent"
               android:layout_height="match_parent"
               android:orientation="vertical"
               android:gravity="center"
-              android:padding="32dp"
-              android:background="#000000">
+              android:background="#000000"
+              android:padding="24dp">
 
+              <!-- 1. Image -->
               <ImageView
-                  android:id="@+id/SonicLogo"
-                  android:layout_width="140dp"
-                  android:layout_height="140dp"
-                  android:layout_marginBottom="20dp"
-                  android:src="@drawable/sonic_kiosk_logo"
-                  android:scaleType="fitCenter"
-                  android:contentDescription="Sonic Boll Deluxe" />
+                  android:id="@+id/splash_image"
+                  android:layout_width="220dp"
+                  android:layout_height="220dp"
+                  android:src="@mipmap/ic_launcher"
+                  android:scaleType="fitCenter" />
 
+              <!-- 2. Text Underneath -->
               <TextView
-                  android:id="@+id/Title"
+                  android:id="@+id/splash_title"
                   android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
-                  android:text="SONIC BOLL DELUXE"
+                  android:layout_marginTop="16dp"
+                  android:text="Sonic Boll Deluxe"
                   android:textColor="#FFFFFF"
-                  android:textSize="24sp"
-                  android:textStyle="bold"
-                  android:gravity="center"
-                  android:layout_marginBottom="10dp" />
+                  android:textSize="22sp"
+                  android:textStyle="bold" />
 
+              <!-- 3. Space -->
+              <Space
+                  android:layout_width="match_parent"
+                  android:layout_height="32dp" />
+
+              <!-- 4. Secondary Text -->
               <TextView
-                  android:id="@+id/TextView"
+                  android:id="@+id/splash_status"
                   android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
-                  android:text="Installing Sonic Boll Deluxe..."
-                  android:textColor="#FFFFFF"
-                  android:textSize="16sp"
-                  android:gravity="center"
-                  android:layout_marginBottom="20dp" />
+                  android:text="Extracting game files, please wait..."
+                  android:textColor="#AAAAAA"
+                  android:textSize="14sp" />
 
-              <com.google.android.material.progressindicator.CircularProgressIndicator
-                  android:id="@+id/CircularProgressIndicator"
-                  android:layout_width="80dp"
-                  android:layout_height="80dp"
-                  android:indeterminate="false"
-                  android:max="100"
-                  app:indicatorSize="70dp"
-                  app:trackThickness="6dp" />
-
-              <TextView
-                  android:id="@+id/TVProgress"
-                  android:layout_width="wrap_content"
+              <!-- 5. ProgressBar -->
+              <ProgressBar
+                  android:id="@+id/splash_progressbar"
+                  style="?android:attr/progressBarStyleHorizontal"
+                  android:layout_width="240dp"
                   android:layout_height="wrap_content"
-                  android:text="0%"
-                  android:textColor="#FFFFFF"
-                  android:textSize="18sp"
-                  android:textStyle="bold"
-                  android:layout_marginTop="14dp" />
-
-              <LinearLayout
-                  android:id="@+id/LLBottomBar"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:orientation="horizontal"
-                  android:visibility="gone">
-
-                  <Button
-                      android:id="@+id/BTCancel"
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"
-                      android:text="Cancel" />
-
-              </LinearLayout>
+                  android:layout_marginTop="12dp"
+                  android:indeterminate="true" />
 
           </LinearLayout>
           EOF
 
-      - name: Create Sonic Boll installer
-        shell: bash
+      - name: Inject Custom Code and Overrides
         run: |
-          set -e
-
-          JAVA_DIR="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator"
-          mkdir -p "$JAVA_DIR"
-
-          cat > "$JAVA_DIR/SonicBollInstaller.java" <<'EOF'
-          package com.winlator;
-
-          import com.winlator.xenvironment.RootFS;
-
-          public class SonicBollInstaller {
-
-              public static void installIfNeeded(
-                      final MainActivity activity) {
-
-                  RootFS rootFS = RootFS.find(activity);
-
-                  if (rootFS == null) {
-                      return;
-                  }
-
-                  if (!rootFS.isValid()) {
-                      return;
-                  }
-
-                  android.util.Log.d(
-                      "SonicBollInstaller",
-                      "Sonic Boll installer hook reached."
-                  );
-              }
-          }
-          EOF
-
-      - name: Hook Sonic Boll into RootFS installation
-        shell: bash
-        run: |
-          set -e
-
-          TARGET="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java"
-
-          if [ ! -f "$TARGET" ]; then
-            echo "ERROR: RootFSInstaller.java not found."
-            exit 1
+          if [ -d "port-src/overrides" ]; then
+            cp -r port-src/overrides/* winlator-src/app/
           fi
 
-          python3 - "$TARGET" <<'PY'
-          import sys
+          if [ -d "port-src/assets" ]; then
+            cp -r port-src/assets/* winlator-src/app/src/main/assets/
+          fi
 
-          path = sys.argv[1]
-
-          with open(path, "r", encoding="utf-8") as f:
-              text = f.read()
-
-          hook = "SonicBollInstaller.installIfNeeded(activity);"
-
-          if hook in text:
-              print("Hook already exists.")
-              sys.exit(0)
-
-          import_line = "import com.winlator.SonicBollInstaller;"
-
-          if import_line not in text:
-              lines = text.splitlines()
-
-              last_import = -1
-
-              for i, line in enumerate(lines):
-                  if line.startswith("import "):
-                      last_import = i
-
-              if last_import >= 0:
-                  lines.insert(last_import + 1, import_line)
-                  text = "\n".join(lines) + "\n"
-
-          target = "resetContainerRFSVersions(activity);"
-
-          if target not in text:
-              print("ERROR: resetContainerRFSVersions(activity); not found.")
-              sys.exit(1)
-
-          text = text.replace(
-              target,
-              target + "\n                " + hook,
-              1
-          )
-
-          with open(path, "w", encoding="utf-8") as f:
-              f.write(text)
-
-          print("RootFS hook installed successfully.")
-          PY
-
-      - name: Verify modifications
-        shell: bash
+      - name: Grant Execute Permission for Gradle
         run: |
-          set -e
-
-          ROOTFS="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java"
-          INSTALLER="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/java/com/winlator/SonicBollInstaller.java"
-          ZIP="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/assets/game.zip"
-          LAYOUT="$GITHUB_WORKSPACE/winlator-source/app/app/src/main/res/layout/download_progress_dialog.xml"
-
-          test -f "$ROOTFS"
-          test -f "$INSTALLER"
-          test -f "$ZIP"
-          test -f "$LAYOUT"
-
-          grep -q "SonicBollInstaller.installIfNeeded(activity);" "$ROOTFS"
-
-          echo "All Sonic Boll files verified."
-
-      - name: Configure Gradle
-        shell: bash
-        run: |
-          cat > "$GITHUB_WORKSPACE/winlator-source/app/gradle.properties" <<'EOF'
-          org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
-          org.gradle.daemon=false
-          org.gradle.parallel=false
-          org.gradle.workers.max=2
-          EOF
-
-      - name: Build APK
-        working-directory: winlator-source/app
-        env:
-          GRADLE_OPTS: "-Xmx4g -Dorg.gradle.daemon=false"
-        run: |
+          cd winlator-src
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --no-parallel --max-workers=2 --stacktrace
 
-      - name: Verify APK
-        shell: bash
+      - name: Build Debug APK
         run: |
-          set -e
+          cd winlator-src
+          ./gradlew assembleDebug --stacktrace
 
-          APK="$GITHUB_WORKSPACE/winlator-source/app/app/build/outputs/apk/debug/app-debug.apk"
-
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: APK was not produced."
-            exit 1
-          fi
-
-          ls -lh "$APK"
-
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sonic-Boll-Deluxe-Android
-          path: winlator-source/app/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          name: sonic-boll-winlator-debug
+          path: winlator-src/app/build/outputs/apk/debug/Sonic Boll.apk
+
+      - name: Create GitHub Release on Tag
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: winlator-src/app/build/outputs/apk/debug/Sonic Boll.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
