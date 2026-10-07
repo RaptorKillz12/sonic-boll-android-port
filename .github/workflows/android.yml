@@ -37,7 +37,7 @@ jobs:
       run: |
         mkdir -p winlator/app/src/main/assets/temp_extract
         # Pulls your exact file from your Dropbox link
-        curl -L -o game.zip "https://dropbox.com"
+        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=ludz2epv&dl=1"
         unzip game.zip -d winlator/app/src/main/assets/temp_extract/
         
         # Flattens your custom path structure so "PK game" contents become the root "game_files" folder
@@ -67,7 +67,7 @@ jobs:
         }\
         android.content.Intent gameIntent = new android.content.Intent(this, com.winlator.XServerService.class);\
         gameIntent.putExtra("container_id", container.getId());\
-        gameIntent.putExtra("exec_path", "Z:/assets/game_files/SonicBoll.exe");\
+        gameIntent.putExtra("exec_path", "Z:/assets/game_files/sonicboll-200.exe");\
         startService(gameIntent);\
         finish();' $JAVA_FILE
 
