@@ -13,7 +13,7 @@ on:
 
 jobs:
   build:
-    name: Clone Winlator, Inject Splash & Build APK
+    name: Clone Winlator, Patch MainActivity & Build APK
     runs-on: ubuntu-latest
 
     steps:
@@ -42,17 +42,17 @@ jobs:
         with:
           ndk-version: r25c
 
-      - name: Create Required Directories
+      - name: Create Required Assets and Layout Directories
         run: |
           mkdir -p winlator-src/app/src/main/assets/
           mkdir -p winlator-src/app/src/main/res/layout/
-          mkdir -p winlator-src/app/src/main/res/drawable/
+          mkdir -p winlator-src/app/src/main/java/com/winlator/
 
       - name: Download Game Zip from Dropbox
         run: |
           curl -L -o winlator-src/app/src/main/assets/game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=22qhf8rk&dl=1"
 
-      - name: Generate Custom Startup Layout (Image + Text + Space + Text + ProgressBar)
+      - name: Override Layout XML (Image + Text + Space + Text + ProgressBar)
         run: |
           cat << 'EOF' > winlator-src/app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
@@ -107,6 +107,82 @@ jobs:
                   android:indeterminate="true" />
 
           </LinearLayout>
+          EOF
+
+      - name: Override MainActivity Java Source
+        run: |
+          cat << 'EOF' > winlator-src/app/src/main/java/com/winlator/MainActivity.java
+          package com.winlator;
+
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.widget.TextView;
+          import androidx.appcompat.app.AppCompatActivity;
+          import com.winlator.container.Container;
+          import com.winlator.container.ContainerManager;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.InputStream;
+          import java.util.zip.ZipEntry;
+          import java.util.zip.ZipInputStream;
+
+          public class MainActivity extends AppCompatActivity {
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+
+                  new Thread(() -> {
+                      extractGameZipIfNeeded();
+                      new Handler(Looper.getMainLooper()).post(this::launchContainer);
+                  }).start();
+              }
+
+              private void extractGameZipIfNeeded() {
+                  File targetDir = new File(getFilesDir(), "image/drive_c/SonicBoll");
+                  if (!targetDir.exists()) {
+                      targetDir.mkdirs();
+                      try (InputStream is = getAssets().open("game.zip");
+                           ZipInputStream zis = new ZipInputStream(is)) {
+                          ZipEntry entry;
+                          byte[] buffer = new byte[8192];
+                          while ((entry = zis.getNextEntry()) != null) {
+                              File file = new File(targetDir, entry.getName());
+                              if (entry.isDirectory()) {
+                                  file.mkdirs();
+                              } else {
+                                  file.getParentFile().mkdirs();
+                                  try (FileOutputStream fos = new FileOutputStream(file)) {
+                                      int count;
+                                      while ((count = zis.read(buffer)) != -1) {
+                                          fos.write(buffer, 0, count);
+                                      }
+                                  }
+                              }
+                              zis.closeEntry();
+                          }
+                      } catch (Exception e) {
+                          e.printStackTrace();
+                      }
+                  }
+              }
+
+              private void launchContainer() {
+                  try {
+                      ContainerManager manager = new ContainerManager(this);
+                      Container container = manager.getContainers().isEmpty() 
+                          ? manager.createContainer(Container.DEFAULT_CONFIG) 
+                          : manager.getContainers().get(0);
+
+                      XServerDisplayActivity.launchWithExecutable(this, container, "C:\\SonicBoll\\SonicBoll.exe");
+                      finish();
+                  } catch (Exception e) {
+                      e.printStackTrace();
+                  }
+              }
+          }
           EOF
 
       - name: Inject Custom Code and Overrides
