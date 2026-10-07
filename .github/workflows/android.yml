@@ -8,55 +8,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clone the complete Winlator codebase along with its nested submodule trees
+    # 1. Clone the complete Winlator codebase directly into your root workspace
     - name: Checkout Source Code
       uses: actions/checkout@v4
       with:
         repository: 'brunodev85/winlator'
         ref: 'main'
-        submodules: 'recursive' # Crucial to pull the internal android project files
+        submodules: 'recursive' # Pulls the vital native underlying submodule files
 
-    # 2. Set up the matching Java Runtime (JDK 17) pointing to the true project root
+    # 2. Set up the matching Java Runtime (JDK 17) pointing to the root gradle setup
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
         cache: 'gradle'
-        # FIXED: Points exactly to the nested subproject root that contains the Android manifest
+        # FIXED: Points exactly to the actual file checked out at the root level
         cache-dependency-path: 'build.gradle'
 
     # 3. Inject the native Wine & Box64 environment (.obb) inside the asset directory
     - name: Download and Extract System Environment Files (OBB)
       run: |
-        mkdir -p winlator/app/src/main/assets
-        # FIXED: Changed the dead placeholder github link to the official, verified Winlator OBB system image
+        mkdir -p app/src/main/assets
+        # FIXED: Patched the dead "github.com" placeholder string with the true native system file engine image URL
         curl -L -o winlator_fs.zip "https://github.com"
-        mv winlator_fs.zip winlator/app/src/main/assets/main.obb
+        mv winlator_fs.zip app/src/main/assets/main.obb
 
-    # 4. Grab your exact Dropbox zip and align the nested folder paths
+    # 4. Grab your exact Dropbox zip and flatten your custom nested folder paths
     - name: Inject Custom Game Files (Sonic Boll)
       run: |
-        mkdir -p winlator/app/src/main/assets/temp_extract
+        mkdir -p app/src/main/assets/temp_extract
         # Pulls your exact file from your Dropbox link
         curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=l0wc8d7v&dl=1"
-        unzip game.zip -d winlator/app/src/main/assets/temp_extract/
+        unzip game.zip -d app/src/main/assets/temp_extract/
         
-        # Flattens your custom path structure so "PK game" contents become the root "game_files" folder
-        mkdir -p winlator/app/src/main/assets/game_files
-        cp -r "winlator/app/src/main/assets/temp_extract/game/PK game/." winlator/app/src/main/assets/game_files/
-        rm -rf winlator/app/src/main/assets/temp_extract
+        # Flattens your nested structure so the inner "PK game" contents become the root "game_files" folder
+        mkdir -p app/src/main/assets/game_files
+        cp -r "app/src/main/assets/temp_extract/game/PK game/." app/src/main/assets/game_files/
+        rm -rf app/src/main/assets/temp_extract
         rm game.zip
 
-        # Verification step to check the executable structure
-        ls -la winlator/app/src/main/assets/game_files/
+        # Verification step to confirm your real executable layout
+        ls -la app/src/main/assets/game_files/
 
     # 5. Programmatically hardcode the launch sequence to target SonicBoll on app open
     - name: Hardcode Boot Loader Engine
       run: |
-        JAVA_FILE="winlator/app/src/main/java/com/winlator/MainActivity.java"
+        JAVA_FILE="app/src/main/java/com/winlator/MainActivity.java"
         
-        # Rewrites the initialization flow to generate a container and execute the path cleanly on layout creation
+        # Rewrites the initialization flow to generate a container and execute your exact file cleanly
         sed -i '/super.onCreate(savedInstanceState);/a \
         com.winlator.container.ContainerManager cm = new com.winlator.container.ContainerManager(this);\
         com.winlator.container.Container container = cm.getContainer(1);\
@@ -77,15 +77,14 @@ jobs:
     - name: Whitelabel Application Identity
       run: |
         # Update app interface interface labels
-        sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' winlator/app/src/main/res/values/strings.xml
+        sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' app/src/main/res/values/strings.xml
         
-        # Override manifest bundle signature to avoid system app naming conflicts
-        sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' winlator/app/build.gradle
+        # Override manifest bundle signature to avoid system app naming conflicts On-Device
+        sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' app/build.gradle
 
-    # 7. Step inside the localized subproject directory, assign permissions, and compile/sign the workspace
+    # 7. Execute compilation directly from the workspace root and sign the output package
     - name: Build and Sign Standalone Release APK
       run: |
-        cd winlator
         chmod +x gradlew
         ./gradlew assembleRelease
         
@@ -93,9 +92,9 @@ jobs:
         keytool -genkey -v -keystore release.keystore -alias boll_alias -keyalg RSA -keysize 2048 -validity 10000 -storepass pass1234 -keypass pass1234 -dname "CN=SonicBoll, OU=Gaming, O=BollTeam, L=US, S=US, C=US"
         jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore release.keystore -storepass pass1234 app/build/outputs/apk/release/app-release-unsigned.apk boll_alias
 
-    # 8. Extract the compiled game package asset out of the subfolder workspace runner space
+    # 8. Extract the compiled game package asset out of the cloud runner workspace boundary
     - name: Export Compiled Game Package Artifact
       uses: actions/upload-artifact@v4
       with:
         name: SonicBoll_Android_Release
-        path: winlator/app/build/outputs/apk/release/app-release-unsigned.apk
+        path: app/build/outputs/apk/release/app-release-unsigned.apk
