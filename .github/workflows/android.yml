@@ -1,14 +1,14 @@
-name: Build Standalone Sonic Boll APK
+name: Build Restricted Standalone Game APK
 
 on:
-  workflow_dispatch: # Allows manual trigger from the GitHub actions page
+  workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clone the complete Winlator codebase directly into your root workspace
+    # 1. Clone the complete Winlator application core base
     - name: Checkout Source Code
       uses: actions/checkout@v4
       with:
@@ -25,50 +25,51 @@ jobs:
         cache: 'gradle'
         cache-dependency-path: 'build.gradle'
 
-    # 3. Inject the native Wine & Box64 environment (.obb) inside the asset directory
+    # 3. Inject the native Wine environment (.obb) inside the asset directory
     - name: Download and Extract System Environment Files (OBB)
       run: |
         mkdir -p app/src/main/assets
         curl -L -o winlator_fs.zip "https://github.com"
         mv winlator_fs.zip app/src/main/assets/main.obb
 
-    # 4. Grab your exact Dropbox zip, locate the game root dynamically, and strip forbidden assets
+    # 4. Fetch the Dropbox archive, map the unique inner paths, and aggressively sanitize non-core files
     - name: Inject and Strip Custom Game Files (Sonic Boll)
       run: |
         mkdir -p app/src/main/assets/temp_extract
-        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=a5j8z9ou&dl=1"
+        curl -L -o game.zip "https://dropbox.com"
         unzip game.zip -d app/src/main/assets/temp_extract/
         
-        # FIXED: Automatically tracks where SonicBoll.exe is hiding inside the zip tree structure
-        EXE_PATH=$(find app/src/main/assets/temp_extract/ -name "SonicBoll.exe" | head -n 1)
-        GAME_ROOT_DIR=$(dirname "$EXE_PATH")
-        
-        echo "Found game executable root directory at: $GAME_ROOT_DIR"
-        
-        # Relocate the stripped game directory structure into place
+        # Fallback directory matching loop: Locates the SonicBoll.exe file regardless of archive folder naming structure
         mkdir -p app/src/main/assets/game_files
-        cp -r "$GAME_ROOT_DIR/." app/src/main/assets/game_files/
+        EXE_DIR=$(dirname "$(find app/src/main/assets/temp_extract -name "sonicboll-200.exe" -print -quit)")
         
-        # STRIP REQUIREMENT: Force-delete the bundles, mods, skins, and save files from internal package space
+        if [ -n "$EXE_DIR" ]; then
+          echo "Target binary localized at: $EXE_DIR"
+          cp -r "$EXE_DIR/." app/src/main/assets/game_files/
+        else
+          echo "Error: Crucial target executable file (SonicBoll.exe) was missing from the downloaded package file tree!"
+          exit 1
+        fi
+        
+        # Enforce strict removal of custom mods, bundles, skins, and local data files from internal app assets
         rm -rf app/src/main/assets/game_files/bundles
         rm -rf app/src/main/assets/game_files/mods
         rm -rf app/src/main/assets/game_files/skins
         rm -rf app/src/main/assets/game_files/save
         rm -rf app/src/main/assets/game_files/saves
         
-        # Purge temporary build storage boundaries
+        # Wipe the staging zone to keep compile targets clean
         rm -rf app/src/main/assets/temp_extract
         rm game.zip
-
-        # Verification step to check the final isolated executable architecture layout
+        
+        echo "=== Verifying completely sandboxed game asset directory layout ==="
         ls -la app/src/main/assets/game_files/
 
-    # 5. Programmatically hardcode the launch sequence to target SonicBoll on app open
+    # 5. Hardcode the app startup to boot directly into internal storage game files
     - name: Hardcode Boot Loader Engine
       run: |
         JAVA_FILE="app/src/main/java/com/winlator/MainActivity.java"
         
-        # Rewrites the initialization flow to generate a container and execute your exact file cleanly on layout creation
         sed -i '/super.onCreate(savedInstanceState);/a \
         com.winlator.container.ContainerManager cm = new com.winlator.container.ContainerManager(this);\
         com.winlator.container.Container container = cm.getContainer(1);\
@@ -77,7 +78,7 @@ jobs:
             container.setResolution("1280x720");\
             container.setGraphicsDriver("turnip");\
             container.setDxWrapper("dxvk");\
-            cm.saveContainer(container);\
+            cm.createContainer(container);\
         }\
         android.content.Intent gameIntent = new android.content.Intent(this, com.winlator.XServerService.class);\
         gameIntent.putExtra("container_id", container.getId());\
@@ -85,26 +86,21 @@ jobs:
         startService(gameIntent);\
         finish();' $JAVA_FILE
 
-    # 6. Repackage the Application Package Metadata to completely obscure Winlator branding strings
+    # 6. Sanitize Application Package Metadata (Whitelabeling)
     - name: Whitelabel Application Identity
       run: |
-        # Update app interface interface labels
         sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' app/src/main/res/values/strings.xml
-        
-        # Override manifest bundle signature to avoid system app naming conflicts On-Device
         sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' app/build.gradle
 
-    # 7. Execute compilation directly from the workspace root and sign the output package
+    # 7. Compile and apply cryptographic signatures for standard device deployment
     - name: Build and Sign Standalone Release APK
       run: |
         chmod +x gradlew
         ./gradlew assembleRelease
-        
-        # Automatically provision local signing keys and inject signatures into the unsigned release output path
         keytool -genkey -v -keystore release.keystore -alias boll_alias -keyalg RSA -keysize 2048 -validity 10000 -storepass pass1234 -keypass pass1234 -dname "CN=SonicBoll, OU=Gaming, O=BollTeam, L=US, S=US, C=US"
         jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore release.keystore -storepass pass1234 app/build/outputs/apk/release/app-release-unsigned.apk boll_alias
 
-    # 8. Extract the compiled game package asset out of the cloud runner workspace boundary
+    # 8. Export the completed, secure installation package
     - name: Export Compiled Game Package Artifact
       uses: actions/upload-artifact@v4
       with:
