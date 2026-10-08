@@ -36,7 +36,7 @@ jobs:
     - name: Inject and Strip Custom Game Files (Sonic Boll)
       run: |
         mkdir -p app/src/main/assets/temp_extract
-        curl -L -o game.zip "https://dropbox.com"
+        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=kzhyu3zz&dl=1"
         unzip game.zip -d app/src/main/assets/temp_extract/
         
         # Fallback directory matching loop: Locates the SonicBoll.exe file regardless of archive folder naming structure
