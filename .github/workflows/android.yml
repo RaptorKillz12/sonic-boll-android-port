@@ -1,14 +1,14 @@
 name: Build Standalone Sonic Boll APK
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger from the GitHub actions page
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clone the complete Winlator app codebase directly into the root workspace
+    # 1. Clone the complete Winlator codebase directly into your root workspace
     - name: Checkout Source Code
       uses: actions/checkout@v4
       with:
@@ -29,32 +29,38 @@ jobs:
     - name: Download and Extract System Environment Files (OBB)
       run: |
         mkdir -p app/src/main/assets
-        curl -L -o winlator_fs.zip "https://github.com/brunodev85/winlator/releases/download/v7.1.3/main.71300.com.winlator.obb"
+        curl -L -o winlator_fs.zip "https://github.com"
         mv winlator_fs.zip app/src/main/assets/main.obb
 
-    # 4. Grab the Dropbox zip, extract it, strip the specified folders, and keep the core game/dlls inside app assets
+    # 4. Grab your exact Dropbox zip, locate the game root dynamically, and strip forbidden assets
     - name: Inject and Strip Custom Game Files (Sonic Boll)
       run: |
         mkdir -p app/src/main/assets/temp_extract
         curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=a5j8z9ou&dl=1"
         unzip game.zip -d app/src/main/assets/temp_extract/
         
-        # Isolate the core game files from the nested zip path
-        mkdir -p app/src/main/assets/game_files
-        cp -r "app/src/main/assets/temp_extract/game/PK game/." app/src/main/assets/game_files/
+        # FIXED: Automatically tracks where SonicBoll.exe is hiding inside the zip tree structure
+        EXE_PATH=$(find app/src/main/assets/temp_extract/ -name "SonicBoll.exe" | head -n 1)
+        GAME_ROOT_DIR=$(dirname "$EXE_PATH")
         
-        # Hard restriction: Remove bundles, mods, skins, and save directories completely from the app package
+        echo "Found game executable root directory at: $GAME_ROOT_DIR"
+        
+        # Relocate the stripped game directory structure into place
+        mkdir -p app/src/main/assets/game_files
+        cp -r "$GAME_ROOT_DIR/." app/src/main/assets/game_files/
+        
+        # STRIP REQUIREMENT: Force-delete the bundles, mods, skins, and save files from internal package space
         rm -rf app/src/main/assets/game_files/bundles
         rm -rf app/src/main/assets/game_files/mods
         rm -rf app/src/main/assets/game_files/skins
         rm -rf app/src/main/assets/game_files/save
         rm -rf app/src/main/assets/game_files/saves
         
+        # Purge temporary build storage boundaries
         rm -rf app/src/main/assets/temp_extract
         rm game.zip
 
-        # Verification step to confirm your core executable layout and stripped content
-        echo "=== Verifying stripped game asset directory ==="
+        # Verification step to check the final isolated executable architecture layout
         ls -la app/src/main/assets/game_files/
 
     # 5. Programmatically hardcode the launch sequence to target SonicBoll on app open
@@ -62,7 +68,7 @@ jobs:
       run: |
         JAVA_FILE="app/src/main/java/com/winlator/MainActivity.java"
         
-        # Rewrites the initialization flow to generate an internal container environment and execute the file path cleanly
+        # Rewrites the initialization flow to generate a container and execute your exact file cleanly on layout creation
         sed -i '/super.onCreate(savedInstanceState);/a \
         com.winlator.container.ContainerManager cm = new com.winlator.container.ContainerManager(this);\
         com.winlator.container.Container container = cm.getContainer(1);\
@@ -82,13 +88,13 @@ jobs:
     # 6. Repackage the Application Package Metadata to completely obscure Winlator branding strings
     - name: Whitelabel Application Identity
       run: |
-        # Update app interface strings
+        # Update app interface interface labels
         sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' app/src/main/res/values/strings.xml
         
         # Override manifest bundle signature to avoid system app naming conflicts On-Device
         sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' app/build.gradle
 
-    # 7. Execute compilation from the workspace root and sign the output package
+    # 7. Execute compilation directly from the workspace root and sign the output package
     - name: Build and Sign Standalone Release APK
       run: |
         chmod +x gradlew
