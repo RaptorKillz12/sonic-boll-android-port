@@ -29,17 +29,17 @@ jobs:
     - name: Download and Extract System Environment Files (OBB)
       run: |
         mkdir -p app/src/main/assets
-        curl -L -o winlator_fs.zip "https://github.com"
+        curl -L -o winlator_fs.zip "https://github.com/brunodev85/winlator/releases/download/v7.1.3/main.71300.com.winlator.obb"
         mv winlator_fs.zip app/src/main/assets/main.obb
 
-    # 4. Fetch the Dropbox archive, map the unique inner paths, and aggressively sanitize non-core files
+    # 4. Fetch the Dropbox archive using an absolute direct stream mirror, then sanitize non-core folders
     - name: Inject and Strip Custom Game Files (Sonic Boll)
       run: |
         mkdir -p app/src/main/assets/temp_extract
-        curl -L -o game.zip "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=kzhyu3zz&dl=1"
+        curl -L -o game.zip "https://dl.dropboxusercontent.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=a5j8z9ou&dl=1"
         unzip game.zip -d app/src/main/assets/temp_extract/
         
-        # Fallback directory matching loop: Locates the SonicBoll.exe file regardless of archive folder naming structure
+        # Fallback directory matching loop: Locates the sonicboll-200.exe file regardless of archive folder naming structure
         mkdir -p app/src/main/assets/game_files
         EXE_DIR=$(dirname "$(find app/src/main/assets/temp_extract -name "sonicboll-200.exe" -print -quit)")
         
@@ -47,7 +47,7 @@ jobs:
           echo "Target binary localized at: $EXE_DIR"
           cp -r "$EXE_DIR/." app/src/main/assets/game_files/
         else
-          echo "Error: Crucial target executable file (SonicBoll.exe) was missing from the downloaded package file tree!"
+          echo "Error: Crucial target executable file (sonicboll-200.exe) was missing from the downloaded package file tree!"
           exit 1
         fi
         
@@ -78,7 +78,7 @@ jobs:
             container.setResolution("1280x720");\
             container.setGraphicsDriver("turnip");\
             container.setDxWrapper("dxvk");\
-            cm.createContainer(container);\
+            cm.saveContainer(container);\
         }\
         android.content.Intent gameIntent = new android.content.Intent(this, com.winlator.XServerService.class);\
         gameIntent.putExtra("container_id", container.getId());\
@@ -86,11 +86,19 @@ jobs:
         startService(gameIntent);\
         finish();' $JAVA_FILE
 
-    # 6. Sanitize Application Package Metadata (Whitelabeling)
-    - name: Whitelabel Application Identity
+    # 6. Sanitize Application Package Metadata (Whitelabeling) and Patch the 32-bit Architecture Error
+    - name: Whitelabel Application Identity and Remove 32-bit NDK Target
       run: |
+        # Update app display name
         sed -i 's/<string name="app_name">Winlator<\/string>/<string name="app_name">Sonic Boll Mobile<\/string>/g' app/src/main/res/values/strings.xml
+        
+        # Override manifest bundle signature to avoid system app naming conflicts
         sed -i 's/applicationId "com.winlator"/applicationId "com.custom.sonicboll"/g' app/build.gradle
+        
+        # FIXED: Automatically strips out the 32-bit armeabi-v7a architecture target from the gradle build filters
+        # This completely stops the libadrenotools compilation crash
+        sed -i "s/'armeabi-v7a', //g" app/build.gradle
+        sed -i "s/'armeabi-v7a'//g" app/build.gradle
 
     # 7. Compile and apply cryptographic signatures for standard device deployment
     - name: Build and Sign Standalone Release APK
