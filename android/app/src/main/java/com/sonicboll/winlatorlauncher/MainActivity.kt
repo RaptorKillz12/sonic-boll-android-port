@@ -45,10 +45,7 @@ class MainActivity : AppCompatActivity() {
         filesListText = findViewById(R.id.files_list)
         progressBar = findViewById(R.id.progress_bar)
 
-        // Set the logo image
         gameImageView.setImageResource(R.drawable.sonic_kiosk_logo)
-
-        // Set title
         gameTitleText.text = "Sonic Boll"
 
         CoroutineScope(Dispatchers.Main).launch {
@@ -74,15 +71,16 @@ class MainActivity : AppCompatActivity() {
                     displayExtractedFiles(gameCacheDir)
                 }
 
-                Thread.sleep(2000)
+                Thread.sleep(1500)
 
-                // Find and launch the game executable
                 val gameExecutable = findGameExecutable(gameCacheDir)
                 if (gameExecutable != null) {
+                    updateStatus("Launching Sonic Boll...")
+                    Thread.sleep(500)
                     launchWinlatorWithGame(gameExecutable, gameCacheDir)
                 } else {
-                    updateStatus("Error: Game executable not found")
-                    Log.e(TAG, "Could not locate $GAME_EXECUTABLE")
+                    updateStatus("Error: $GAME_EXECUTABLE not found")
+                    Log.e(TAG, "Game executable not located in cache")
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "Startup failed", t)
@@ -95,7 +93,7 @@ class MainActivity : AppCompatActivity() {
         val request = Request.Builder().url(DROPBOX_ZIP_URL).build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("Download failed with code ${response.code}")
+                throw IllegalStateException("Download failed: HTTP ${response.code}")
             }
 
             response.body?.byteStream()?.use { input ->
@@ -107,22 +105,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun findGameExecutable(gameCacheDir: File): File? {
-        if (!gameCacheDir.exists()) return null
+        if (!gameCacheDir.exists()) {
+            Log.e(TAG, "Game cache directory does not exist")
+            return null
+        }
 
-        // Search recursively for the executable
-        return searchForFile(gameCacheDir, GAME_EXECUTABLE)
+        val executable = searchForFile(gameCacheDir, GAME_EXECUTABLE)
+        if (executable != null) {
+            Log.i(TAG, "Found executable: ${executable.absolutePath}")
+        }
+        return executable
     }
 
     private fun searchForFile(directory: File, fileName: String): File? {
         val files = directory.listFiles() ?: return null
 
         for (file in files) {
-            if (file.isFile && file.name == fileName) {
+            if (file.isFile && file.name.equals(fileName, ignoreCase = true)) {
                 return file
             }
             if (file.isDirectory) {
-                val found = searchForFile(file, fileName)
-                if (found != null) return found
+                val result = searchForFile(file, fileName)
+                if (result != null) return result
             }
         }
         return null
@@ -139,11 +143,7 @@ class MainActivity : AppCompatActivity() {
 
         if (files != null && files.isNotEmpty()) {
             for (file in files) {
-                if (file.isDirectory) {
-                    fileList.add("📁 ${file.name}/")
-                } else {
-                    fileList.add("📄 ${file.name}")
-                }
+                fileList.add(if (file.isDirectory) "📁 ${file.name}/" else "📄 ${file.name}")
             }
         }
 
@@ -162,17 +162,17 @@ class MainActivity : AppCompatActivity() {
             val launchIntent = packageManager.getLaunchIntentForPackage(WINLATOR_PACKAGE)
                 ?: Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$WINLATOR_PACKAGE".toUri())
 
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             launchIntent.putExtra("game_path", gameCacheDir.absolutePath)
             launchIntent.putExtra("executable_path", gameExecutable.absolutePath)
-            launchIntent.putExtra("launch_mode", "sonic_boll")
+            launchIntent.putExtra("executable", gameExecutable.absolutePath)
             launchIntent.putExtra("game_name", "Sonic Boll")
 
-            updateStatus("Launching Sonic Boll...")
             startActivity(launchIntent)
+            Log.i(TAG, "Winlator launch intent sent with executable: ${gameExecutable.absolutePath}")
         } catch (t: Throwable) {
-            Log.e(TAG, "Could not launch Winlator", t)
-            updateStatus("Could not launch Winlator: ${t.message}")
+            Log.e(TAG, "Failed to launch Winlator", t)
+            updateStatus("Failed to launch: ${t.message}")
         }
     }
 }
