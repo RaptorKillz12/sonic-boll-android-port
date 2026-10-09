@@ -1,10 +1,11 @@
 package com.sonicboll.winlatorlauncher
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
+import android.widget.ImageView
+import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import kotlinx.coroutines.CoroutineScope
@@ -15,102 +16,128 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
-import java.util.zip.ZipInputStream
 
 class MainActivity : AppCompatActivity() {
 
     private val client = OkHttpClient()
+    private val storageManager by lazy { StorageManager(this) }
+
+    private lateinit var gameImageView: ImageView
+    private lateinit var gameTitleText: TextView
+    private lateinit var statusText: TextView
+    private lateinit var filesListText: TextView
+    private lateinit var progressBar: ProgressBar
 
     companion object {
         private const val TAG = "SonicBollLauncher"
-
-        // Replace this with the actual package used by the Winlator app or fork.
         private const val WINLATOR_PACKAGE = "com.winlator"
-
-        // Replace with the dropbox file URL for the actual Sonic Boll package.
-        private const val DROPBOX_ZIP_URL = "https://www.dropbox.com/s/your-file/sonic-boll.zip?dl=1"
-
-        private const val GAME_DIR_NAME = "sonic_boll"
+        private const val DROPBOX_ZIP_URL = "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=2un49jr8&dl=1"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        gameImageView = findViewById(R.id.game_image)
+        gameTitleText = findViewById(R.id.game_title)
+        statusText = findViewById(R.id.status_text)
+        filesListText = findViewById(R.id.files_list)
+        progressBar = findViewById(R.id.progress_bar)
+
+        // Set the logo image
+        gameImageView.setImageResource(R.drawable.sonic_kiosk_logo)
+
+        // Set title
+        gameTitleText.text = "Sonic Boll"
+
         CoroutineScope(Dispatchers.Main).launch {
-            val gameDir = getGameInstallDir()
-            if (!gameDir.exists()) {
-                downloadAndExtractGame(gameDir)
-            }
+            try {
+                val zipFile = storageManager.getZipDownloadPath()
+                val gameCacheDir = storageManager.getGameCacheDir()
 
-            launchWinlatorWithGame(gameDir)
-        }
-    }
+                if (!gameCacheDir.exists()) {
+                    updateStatus("Downloading game...")
+                    downloadZipToCache(zipFile)
 
-    private fun getGameInstallDir(): File {
-        val base = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-            ?: filesDir
-        return File(base, GAME_DIR_NAME)
-    }
+                    updateStatus("Extracting files...")
+                    storageManager.ensureGameFolders()
+                    storageManager.unzipGameToCache(zipFile, gameCacheDir)
 
-    private suspend fun downloadAndExtractGame(gameDir: File) = withContext(Dispatchers.IO) {
-        try {
-            val zipFile = File(filesDir, "sonic_boll.zip")
-            val request = Request.Builder().url(DROPBOX_ZIP_URL).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Download failed: ${response.code}")
-                }
+                    updateStatus("Setting up game folders...")
+                    storageManager.copyGameFoldersToMainStorage(gameCacheDir)
 
-                response.body?.byteStream()?.use { input ->
-                    FileOutputStream(zipFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-
-            unzip(zipFile, gameDir)
-            zipFile.delete()
-
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to download/extract Sonic Boll", t)
-            throw t
-        }
-    }
-
-    private fun unzip(zipFile: File, destinationDir: File) {
-        destinationDir.mkdirs()
-
-        ZipInputStream(zipFile.inputStream()).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                val outFile = File(destinationDir, entry.name)
-                if (entry.isDirectory) {
-                    outFile.mkdirs()
+                    updateStatus("Installation complete!")
+                    displayExtractedFiles(gameCacheDir)
                 } else {
-                    outFile.parentFile?.mkdirs()
-                    outFile.outputStream().use { output ->
-                        zis.copyTo(output)
-                    }
+                    updateStatus("Game already installed")
+                    displayExtractedFiles(gameCacheDir)
                 }
-                zis.closeEntry()
-                entry = zis.nextEntry
+
+                Thread.sleep(2000)
+                launchWinlatorWithGame(gameCacheDir)
+            } catch (t: Throwable) {
+                Log.e(TAG, "Startup failed", t)
+                updateStatus("Error: ${t.message}")
             }
+        }
+    }
+
+    private suspend fun downloadZipToCache(zipFile: File) = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(DROPBOX_ZIP_URL).build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Download failed with code ${response.code}")
+            }
+
+            response.body?.byteStream()?.use { input ->
+                FileOutputStream(zipFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+    }
+
+    private fun displayExtractedFiles(gameCacheDir: File) {
+        if (!gameCacheDir.exists()) {
+            filesListText.text = "No files extracted"
+            return
+        }
+
+        val fileList = mutableListOf<String>()
+        val files = gameCacheDir.listFiles()
+
+        if (files != null && files.isNotEmpty()) {
+            for (file in files) {
+                if (file.isDirectory) {
+                    fileList.add("📁 ${file.name}/")
+                } else {
+                    fileList.add("📄 ${file.name}")
+                }
+            }
+        }
+
+        filesListText.text = fileList.joinToString("\n")
+    }
+
+    private fun updateStatus(message: String) {
+        runOnUiThread {
+            statusText.text = message
+            Log.d(TAG, message)
         }
     }
 
     private fun launchWinlatorWithGame(gameDir: File) {
         try {
-            val intent = packageManager.getLaunchIntentForPackage(WINLATOR_PACKAGE)
+            val launchIntent = packageManager.getLaunchIntentForPackage(WINLATOR_PACKAGE)
                 ?: Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$WINLATOR_PACKAGE".toUri())
 
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.putExtra("game_path", gameDir.absolutePath)
-            intent.putExtra("launch_mode", "sonic_boll")
-            startActivity(intent)
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            launchIntent.putExtra("game_path", gameDir.absolutePath)
+            launchIntent.putExtra("launch_mode", "sonic_boll")
+            startActivity(launchIntent)
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to launch Winlator", t)
+            Log.e(TAG, "Could not launch Winlator", t)
+            updateStatus("Could not launch Winlator: ${t.message}")
         }
     }
 }
