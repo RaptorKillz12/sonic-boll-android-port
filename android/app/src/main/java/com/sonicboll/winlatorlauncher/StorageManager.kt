@@ -1,1 +1,90 @@
-package com.sonicboll.winlatorlauncher\n\nimport android.content.Context\nimport android.os.Environment\nimport android.util.Log\nimport java.io.File\nimport java.util.zip.ZipInputStream\n\nclass StorageManager(private val context: Context) {\n\n    companion object {\n        private const val TAG = \"StorageManager\"\n        private const val GAME_DIR_NAME = \"sonic_boll\"\n    }\n\n    /**\n     * Get the game installation directory in internal app storage.\n     * Path: /data/data/com.sonicboll.winlatorlauncher/files/sonic_boll\n     */\n    fun getGameInstallDir(): File {\n        return File(context.filesDir, GAME_DIR_NAME)\n    }\n\n    /**\n     * Get the game installation directory in external app storage (if available).\n     * Path: /sdcard/Android/data/com.sonicboll.winlatorlauncher/files/sonic_boll\n     * Falls back to internal storage if external is not available.\n     */\n    fun getGameInstallDirExternal(): File {\n        val externalDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)\n        return if (externalDir != null && isExternalStorageAvailable()) {\n            File(externalDir, GAME_DIR_NAME)\n        } else {\n            getGameInstallDir()\n        }\n    }\n\n    /**\n     * Get the cache directory for temporary files (like downloaded ZIPs).\n     */\n    fun getCacheDir(): File {\n        return context.cacheDir\n    }\n\n    /**\n     * Check if the game is already installed.\n     */\n    fun isGameInstalled(): Boolean {\n        val gameDir = getGameInstallDir()\n        return gameDir.exists() && gameDir.isDirectory && gameDir.listFiles()?.isNotEmpty() == true\n    }\n\n    /**\n     * Get the size of the installed game folder.\n     */\n    fun getGameDirectorySize(): Long {\n        return getFolderSize(getGameInstallDir())\n    }\n\n    /**\n     * Recursively calculate the size of a folder.\n     */\n    private fun getFolderSize(folder: File): Long {\n        var size = 0L\n        if (folder.isDirectory) {\n            folder.listFiles()?.forEach { file ->\n                size += if (file.isDirectory) {\n                    getFolderSize(file)\n                } else {\n                    file.length()\n                }\n            }\n        }\n        return size\n    }\n\n    /**\n     * Unzip the game archive to the installation directory.\n     */\n    fun unzipGame(zipFile: File, destinationDir: File = getGameInstallDir()) {\n        try {\n            destinationDir.mkdirs()\n\n            ZipInputStream(zipFile.inputStream()).use { zis ->\n                var entry = zis.nextEntry\n                while (entry != null) {\n                    val outFile = File(destinationDir, entry.name)\n                    if (entry.isDirectory) {\n                        outFile.mkdirs()\n                    } else {\n                        outFile.parentFile?.mkdirs()\n                        outFile.outputStream().use { output ->\n                            zis.copyTo(output)\n                        }\n                    }\n                    zis.closeEntry()\n                    entry = zis.nextEntry\n                }\n            }\n            Log.i(TAG, \"Game extracted successfully to ${destinationDir.absolutePath}\")\n        } catch (t: Throwable) {\n            Log.e(TAG, \"Failed to unzip game files\", t)\n            throw t\n        }\n    }\n\n    /**\n     * Delete the game installation directory to free up space.\n     */\n    fun deleteGameInstallation(): Boolean {\n        return try {\n            val gameDir = getGameInstallDir()\n            if (gameDir.exists()) {\n                deleteRecursively(gameDir)\n                Log.i(TAG, \"Game installation deleted\")\n                true\n            } else {\n                false\n            }\n        } catch (t: Throwable) {\n            Log.e(TAG, \"Failed to delete game installation\", t)\n            false\n        }\n    }\n\n    /**\n     * Recursively delete a directory and all its contents.\n     */\n    private fun deleteRecursively(file: File): Boolean {\n        return if (file.isDirectory) {\n            file.listFiles()?.all { deleteRecursively(it) } == true && file.delete()\n        } else {\n            file.delete()\n        }\n    }\n\n    /**\n     * List all folders in the game directory.\n     */\n    fun listGameFolders(): List<File> {\n        val gameDir = getGameInstallDir()\n        return gameDir.listFiles()?.filter { it.isDirectory } ?: emptyList()\n    }\n\n    /**\n     * List all files in a specific game subfolder.\n     */\n    fun listGameFilesInFolder(folderName: String): List<File> {\n        val folder = File(getGameInstallDir(), folderName)\n        return folder.listFiles()?.filter { it.isFile } ?: emptyList()\n    }\n\n    /**\n     * Check if external storage is available and writable.\n     */\n    private fun isExternalStorageAvailable(): Boolean {\n        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED\n    }\n\n    /**\n     * Get the absolute path to a game file or folder.\n     */\n    fun getGamePath(relativePath: String): File {\n        return File(getGameInstallDir(), relativePath)\n    }\n}\n
+package com.sonicboll.winlatorlauncher
+
+import android.content.Context
+import android.os.Environment
+import android.util.Log
+import java.io.File
+import java.util.zip.ZipInputStream
+
+class StorageManager(private val context: Context) {
+
+    companion object {
+        private const val TAG = "StorageManager"
+        private const val GAME_DIR_NAME = "sonic_boll"
+    }
+
+    fun getGameInstallDir(): File {
+        return File(context.filesDir, GAME_DIR_NAME)
+    }
+
+    fun getTempZipPath(): File {
+        return File(context.cacheDir, "sonic_boll.zip")
+    }
+
+    fun getGameInstallDirExternal(): File {
+        val externalDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+        return if (externalDir != null && isExternalStorageAvailable()) {
+            File(externalDir, GAME_DIR_NAME)
+        } else {
+            getGameInstallDir()
+        }
+    }
+
+    fun isGameInstalled(): Boolean {
+        val gameDir = getGameInstallDir()
+        return gameDir.exists() && gameDir.isDirectory && gameDir.listFiles()?.isNotEmpty() == true
+    }
+
+    fun unzipGame(zipFile: File, destinationDir: File = getGameInstallDir()) {
+        try {
+            destinationDir.mkdirs()
+            ZipInputStream(zipFile.inputStream()).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val outFile = File(destinationDir, entry.name)
+                    if (entry.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+                        outFile.outputStream().use { output ->
+                            zis.copyTo(output)
+                        }
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+            }
+            Log.i(TAG, "Game extracted successfully to ${destinationDir.absolutePath}")
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to unzip game files", t)
+            throw t
+        }
+    }
+
+    fun deleteGameInstallation(): Boolean {
+        return try {
+            val gameDir = getGameInstallDir()
+            if (gameDir.exists()) {
+                deleteRecursively(gameDir)
+                true
+            } else {
+                false
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to delete game installation", t)
+            false
+        }
+    }
+
+    private fun deleteRecursively(file: File): Boolean {
+        return if (file.isDirectory) {
+            file.listFiles()?.all { deleteRecursively(it) } == true && file.delete()
+        } else {
+            file.delete()
+        }
+    }
+
+    private fun isExternalStorageAvailable(): Boolean {
+        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
+    }
+}
