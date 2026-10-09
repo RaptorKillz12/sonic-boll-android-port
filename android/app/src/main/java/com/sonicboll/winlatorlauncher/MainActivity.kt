@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "SonicBollLauncher"
         private const val WINLATOR_PACKAGE = "com.winlator"
         private const val DROPBOX_ZIP_URL = "https://www.dropbox.com/scl/fi/b1niwoyxm6kb64utk4w3i/game.zip?rlkey=pymghznnk4phoow743wzpziki&st=2un49jr8&dl=1"
+        private const val GAME_EXECUTABLE = "sonicboll-200.exe"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,7 +75,15 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 Thread.sleep(2000)
-                launchWinlatorWithGame(gameCacheDir)
+
+                // Find and launch the game executable
+                val gameExecutable = findGameExecutable(gameCacheDir)
+                if (gameExecutable != null) {
+                    launchWinlatorWithGame(gameExecutable, gameCacheDir)
+                } else {
+                    updateStatus("Error: Game executable not found")
+                    Log.e(TAG, "Could not locate $GAME_EXECUTABLE")
+                }
             } catch (t: Throwable) {
                 Log.e(TAG, "Startup failed", t)
                 updateStatus("Error: ${t.message}")
@@ -95,6 +104,28 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun findGameExecutable(gameCacheDir: File): File? {
+        if (!gameCacheDir.exists()) return null
+
+        // Search recursively for the executable
+        return searchForFile(gameCacheDir, GAME_EXECUTABLE)
+    }
+
+    private fun searchForFile(directory: File, fileName: String): File? {
+        val files = directory.listFiles() ?: return null
+
+        for (file in files) {
+            if (file.isFile && file.name == fileName) {
+                return file
+            }
+            if (file.isDirectory) {
+                val found = searchForFile(file, fileName)
+                if (found != null) return found
+            }
+        }
+        return null
     }
 
     private fun displayExtractedFiles(gameCacheDir: File) {
@@ -126,14 +157,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun launchWinlatorWithGame(gameDir: File) {
+    private fun launchWinlatorWithGame(gameExecutable: File, gameCacheDir: File) {
         try {
             val launchIntent = packageManager.getLaunchIntentForPackage(WINLATOR_PACKAGE)
                 ?: Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$WINLATOR_PACKAGE".toUri())
 
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            launchIntent.putExtra("game_path", gameDir.absolutePath)
+            launchIntent.putExtra("game_path", gameCacheDir.absolutePath)
+            launchIntent.putExtra("executable_path", gameExecutable.absolutePath)
             launchIntent.putExtra("launch_mode", "sonic_boll")
+            launchIntent.putExtra("game_name", "Sonic Boll")
+
+            updateStatus("Launching Sonic Boll...")
             startActivity(launchIntent)
         } catch (t: Throwable) {
             Log.e(TAG, "Could not launch Winlator", t)
