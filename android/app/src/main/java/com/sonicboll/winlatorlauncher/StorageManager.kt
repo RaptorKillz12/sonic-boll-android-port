@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Environment
 import android.util.Log
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
 
 class StorageManager(private val context: Context) {
@@ -11,53 +13,50 @@ class StorageManager(private val context: Context) {
     companion object {
         private const val TAG = "StorageManager"
         private const val GAME_DIR_NAME = "SonicBoll"
-        private const val GAMES_FOLDER = "Games"
+        private const val MODS_DIR = "mods"
+        private const val SAVES_DIR = "saves"
+        private const val SKINS_DIR = "skins"
+        private const val BUNDLES_DIR = "bundles"
     }
 
     /**
-     * Get the game installation directory in main phone storage.
-     * Path: /storage/emulated/0/Games/SonicBoll/
-     * This is accessible to Winlator and other apps.
+     * App internal cache location for the downloaded ZIP file.
+     * Example: /data/data/com.sonicboll.winlatorlauncher/cache/sonic_boll.zip
      */
-    fun getGameInstallDir(): File {
-        val gamesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).parent, GAMES_FOLDER)
-        return File(gamesDir, GAME_DIR_NAME)
-    }
-
-    /**
-     * Alternative: Get game directory directly from main storage root.
-     * Path: /storage/emulated/0/SonicBoll/
-     */
-    fun getGameInstallDirRoot(): File {
-        return File(Environment.getExternalStorageDirectory(), GAME_DIR_NAME)
-    }
-
-    /**
-     * Get the temp cache directory for the ZIP file.
-     */
-    fun getTempZipPath(): File {
+    fun getZipDownloadPath(): File {
         return File(context.cacheDir, "sonic_boll.zip")
     }
 
     /**
-     * Check if the game is already installed.
+     * Main phone storage location for game and user-editable content.
+     * Example: /storage/emulated/0/Games/SonicBoll/
      */
-    fun isGameInstalled(): Boolean {
-        val gameDir = getGameInstallDir()
-        return gameDir.exists() && gameDir.isDirectory && gameDir.listFiles()?.isNotEmpty() == true
+    fun getGameInstallDir(): File {
+        val gamesRoot = File(Environment.getExternalStorageDirectory(), "Games")
+        return File(gamesRoot, GAME_DIR_NAME)
+    }
+
+    fun getModFolder(): File = File(getGameInstallDir(), MODS_DIR)
+    fun getSavesFolder(): File = File(getGameInstallDir(), SAVES_DIR)
+    fun getSkinsFolder(): File = File(getGameInstallDir(), SKINS_DIR)
+    fun getBundlesFolder(): File = File(getGameInstallDir(), BUNDLES_DIR)
+
+    /**
+     * Ensures the main storage game folders exist.
+     */
+    fun ensureGameFolders() {
+        val root = getGameInstallDir()
+        root.mkdirs()
+        getModFolder().mkdirs()
+        getSavesFolder().mkdirs()
+        getSkinsFolder().mkdirs()
+        getBundlesFolder().mkdirs()
     }
 
     /**
-     * Check if external storage is available and writable.
+     * Extract the downloaded ZIP into the main phone storage folder.
      */
-    fun isExternalStorageAvailable(): Boolean {
-        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
-    }
-
-    /**
-     * Unzip the game archive to the installation directory.
-     */
-    fun unzipGame(zipFile: File, destinationDir: File = getGameInstallDir()) {
+    fun unzipGameToMainStorage(zipFile: File, destinationDir: File = getGameInstallDir()) {
         try {
             if (!isExternalStorageAvailable()) {
                 throw IllegalStateException("External storage not available")
@@ -80,47 +79,65 @@ class StorageManager(private val context: Context) {
                     entry = zis.nextEntry
                 }
             }
-            Log.i(TAG, "Game extracted successfully to ${destinationDir.absolutePath}")
+            Log.i(TAG, "Game extracted to main storage: ${destinationDir.absolutePath}")
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to unzip game files", t)
+            Log.e(TAG, "Failed to unzip the game archive", t)
             throw t
         }
     }
 
     /**
-     * Delete the game installation directory to free up space.
+     * Copies a folder from the extracted directory into the persistent main storage folder.
+     * Use for saves, mods, skins, and bundles.
      */
-    fun deleteGameInstallation(): Boolean {
-        return try {
-            val gameDir = getGameInstallDir()
-            if (gameDir.exists()) {
-                deleteRecursively(gameDir)
-                Log.i(TAG, "Game installation deleted")
-                true
+    fun copyFolderToMainStorage(sourceDir: File, targetDir: File) {
+        if (!sourceDir.exists()) return
+        targetDir.mkdirs()
+
+        sourceDir.listFiles()?.forEach { child ->
+            val targetChild = File(targetDir, child.name)
+            if (child.isDirectory) {
+                copyFolderToMainStorage(child, targetChild)
             } else {
-                false
+                copyFile(child, targetChild)
             }
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to delete game installation", t)
-            false
+        }
+    }
+
+    private fun copyFile(sourceFile: File, targetFile: File) {
+        targetFile.parentFile?.mkdirs()
+        FileInputStream(sourceFile).use { input ->
+            FileOutputStream(targetFile).use { output ->
+                input.copyTo(output)
+            }
         }
     }
 
     /**
-     * Recursively delete a directory and all its contents.
+     * Returns the game folder path in main storage for Winlator.
      */
+    fun getGamePath(): String {
+        return getGameInstallDir().absolutePath
+    }
+
+    fun isExternalStorageAvailable(): Boolean {
+        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
+    }
+
+    fun deleteGameInstallation(): Boolean {
+        val gameDir = getGameInstallDir()
+        return if (gameDir.exists()) {
+            deleteRecursively(gameDir)
+        } else {
+            false
+        }
+    }
+
     private fun deleteRecursively(file: File): Boolean {
         return if (file.isDirectory) {
             file.listFiles()?.all { deleteRecursively(it) } == true && file.delete()
         } else {
             file.delete()
         }
-    }
-
-    /**
-     * Get the absolute path to the game installation.
-     */
-    fun getGamePath(): String {
-        return getGameInstallDir().absolutePath
     }
 }
