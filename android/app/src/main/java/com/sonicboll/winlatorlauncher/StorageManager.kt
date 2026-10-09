@@ -20,15 +20,19 @@ class StorageManager(private val context: Context) {
     }
 
     /**
-     * App internal cache location for the downloaded ZIP file.
-     * Example: /data/data/com.sonicboll.winlatorlauncher/cache/sonic_boll.zip
+     * App cache location for downloaded ZIP and extracted game files.
+     * Example: /data/data/com.sonicboll.winlatorlauncher/cache/
      */
     fun getZipDownloadPath(): File {
         return File(context.cacheDir, "sonic_boll.zip")
     }
 
+    fun getGameCacheDir(): File {
+        return File(context.cacheDir, GAME_DIR_NAME)
+    }
+
     /**
-     * Main phone storage location for game and user-editable content.
+     * Main phone storage location for user-editable game folders only.
      * Example: /storage/emulated/0/Games/SonicBoll/
      */
     fun getGameInstallDir(): File {
@@ -42,7 +46,7 @@ class StorageManager(private val context: Context) {
     fun getBundlesFolder(): File = File(getGameInstallDir(), BUNDLES_DIR)
 
     /**
-     * Ensures the main storage game folders exist.
+     * Ensures user-editable folders exist in main phone storage.
      */
     fun ensureGameFolders() {
         val root = getGameInstallDir()
@@ -54,14 +58,10 @@ class StorageManager(private val context: Context) {
     }
 
     /**
-     * Extract the downloaded ZIP into the main phone storage folder.
+     * Extract the downloaded ZIP into app cache.
      */
-    fun unzipGameToMainStorage(zipFile: File, destinationDir: File = getGameInstallDir()) {
+    fun unzipGameToCache(zipFile: File, destinationDir: File = getGameCacheDir()) {
         try {
-            if (!isExternalStorageAvailable()) {
-                throw IllegalStateException("External storage not available")
-            }
-
             destinationDir.mkdirs()
             ZipInputStream(zipFile.inputStream()).use { zis ->
                 var entry = zis.nextEntry
@@ -79,7 +79,7 @@ class StorageManager(private val context: Context) {
                     entry = zis.nextEntry
                 }
             }
-            Log.i(TAG, "Game extracted to main storage: ${destinationDir.absolutePath}")
+            Log.i(TAG, "Game extracted to app cache: ${destinationDir.absolutePath}")
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to unzip the game archive", t)
             throw t
@@ -87,57 +87,22 @@ class StorageManager(private val context: Context) {
     }
 
     /**
-     * Copies a folder from the extracted directory into the persistent main storage folder.
+     * Copies specific game folders from app cache to main storage.
      * Use for saves, mods, skins, and bundles.
      */
-    fun copyFolderToMainStorage(sourceDir: File, targetDir: File) {
-        if (!sourceDir.exists()) return
-        targetDir.mkdirs()
+    fun copyGameFoldersToMainStorage(sourceCacheDir: File = getGameCacheDir()) {
+        val cacheModsDir = File(sourceCacheDir, MODS_DIR)
+        val cacheSavesDir = File(sourceCacheDir, SAVES_DIR)
+        val cacheSkinsDir = File(sourceCacheDir, SKINS_DIR)
+        val cacheBundlesDir = File(sourceCacheDir, BUNDLES_DIR)
 
-        sourceDir.listFiles()?.forEach { child ->
-            val targetChild = File(targetDir, child.name)
-            if (child.isDirectory) {
-                copyFolderToMainStorage(child, targetChild)
-            } else {
-                copyFile(child, targetChild)
-            }
-        }
-    }
-
-    private fun copyFile(sourceFile: File, targetFile: File) {
-        targetFile.parentFile?.mkdirs()
-        FileInputStream(sourceFile).use { input ->
-            FileOutputStream(targetFile).use { output ->
-                input.copyTo(output)
-            }
-        }
+        if (cacheModsDir.exists()) copyFolderToMainStorage(cacheModsDir, getModFolder())
+        if (cacheSavesDir.exists()) copyFolderToMainStorage(cacheSavesDir, getSavesFolder())
+        if (cacheSkinsDir.exists()) copyFolderToMainStorage(cacheSkinsDir, getSkinsFolder())
+        if (cacheBundlesDir.exists()) copyFolderToMainStorage(cacheBundlesDir, getBundlesFolder())
     }
 
     /**
-     * Returns the game folder path in main storage for Winlator.
+     * Copies a folder recursively from source to target.
      */
-    fun getGamePath(): String {
-        return getGameInstallDir().absolutePath
-    }
-
-    fun isExternalStorageAvailable(): Boolean {
-        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
-    }
-
-    fun deleteGameInstallation(): Boolean {
-        val gameDir = getGameInstallDir()
-        return if (gameDir.exists()) {
-            deleteRecursively(gameDir)
-        } else {
-            false
-        }
-    }
-
-    private fun deleteRecursively(file: File): Boolean {
-        return if (file.isDirectory) {
-            file.listFiles()?.all { deleteRecursively(it) } == true && file.delete()
-        } else {
-            file.delete()
-        }
-    }
-}
+    private fun copyFolderToMainStorage(sourceDir: File, targetDir: File) {\n        if (!sourceDir.exists()) return\n        targetDir.mkdirs()\n\n        sourceDir.listFiles()?.forEach { child ->\n            val targetChild = File(targetDir, child.name)\n            if (child.isDirectory) {\n                copyFolderToMainStorage(child, targetChild)\n            } else {\n                copyFile(child, targetChild)\n            }\n        }\n    }\n\n    private fun copyFile(sourceFile: File, targetFile: File) {\n        targetFile.parentFile?.mkdirs()\n        FileInputStream(sourceFile).use { input ->\n            FileOutputStream(targetFile).use { output ->\n                input.copyTo(output)\n            }\n        }\n    }\n\n    /**\n     * Returns the game executable path in app cache for Winlator.\n     */\n    fun getGameCachePath(): String {\n        return getGameCacheDir().absolutePath\n    }\n\n    /**\n     * Returns the shared game folder path in main storage for user content.\n     */\n    fun getGameStoragePath(): String {\n        return getGameInstallDir().absolutePath\n    }\n\n    fun isExternalStorageAvailable(): Boolean {\n        return Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED\n    }\n\n    fun deleteGameCache(): Boolean {\n        val cacheDir = getGameCacheDir()\n        return if (cacheDir.exists()) {\n            deleteRecursively(cacheDir)\n        } else {\n            false\n        }\n    }\n\n    fun deleteGameStorage(): Boolean {\n        val storageDir = getGameInstallDir()\n        return if (storageDir.exists()) {\n            deleteRecursively(storageDir)\n        } else {\n            false\n        }\n    }\n\n    private fun deleteRecursively(file: File): Boolean {\n        return if (file.isDirectory) {\n            file.listFiles()?.all { deleteRecursively(it) } == true && file.delete()\n        } else {\n            file.delete()\n        }\n    }\n}\n
