@@ -7,36 +7,33 @@
     android:padding="24dp"
     android:background="#101820">
 
-    <!-- Game Image -->
     <ImageView
         android:id="@+id/game_image"
         android:layout_width="200dp"
         android:layout_height="200dp"
-        android:contentDescription="@string/app_name"
-        android:scaleType="centerInside" />
+        android:contentDescription="Sonic Boll"
+        android:scaleType="centerInside"
+        android:src="@drawable/sonic_kiosk_logo" />
 
-    <!-- Game Title Text -->
     <TextView
         android:id="@+id/game_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="30dp"
+        android:layout_marginTop="24dp"
         android:text="Sonic Boll"
         android:textSize="32sp"
         android:textStyle="bold"
         android:textColor="#FFFFFF" />
 
-    <!-- Status Text -->
     <TextView
         android:id="@+id/status_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="16dp"
         android:text="Initializing..."
         android:textSize="16sp"
         android:textColor="#E0E0E0" />
 
-    <!-- Progress Bar -->
     <ProgressBar
         android:id="@+id/progress_bar"
         android:layout_width="200dp"
@@ -45,18 +42,15 @@
         android:indeterminate="true"
         android:indeterminateTint="#FFFFFF" />
 
-    <!-- Spacer -->
     <Space
         android:layout_width="match_parent"
         android:layout_height="30dp" />
 
-    <!-- Files List -->
     <TextView
         android:id="@+id/files_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:text="Extracting files..."
+        android:text="Preparing files..."
         android:textSize="12sp"
         android:textColor="#CCCCCC"
         android:gravity="center"
