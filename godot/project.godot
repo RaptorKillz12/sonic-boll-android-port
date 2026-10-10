@@ -1,0 +1,15 @@
+[project]
+
+name="Sonic Boll"
+config_version=5
+
+[application]
+
+config/name="Sonic Boll"
+config/version="1.0"
+run/main_scene="res://scenes/Main.tscn"
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=1
+textures/canvas_textures/default_texture_repeat=1
